@@ -1,1 +1,1 @@
-command="{command | arg_escape}",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty,cert-authority,no-user-rc {keytype} {certkey}
+cert-authority,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty,no-user-rc,restrict {keytype} {certkey}

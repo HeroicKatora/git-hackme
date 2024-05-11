@@ -15,15 +15,16 @@ enum Exit {
 }
 
 fn _do() -> Result<(), std::io::Error> {
-    let cli = cli::Cli;
-
     let config = configuration::Configuration::get()?;
     let options = config.options()?;
 
-    let ca = cli.create_ca(options, config.identity_file())?;
-    let signed = cli.generate_and_sign_key(&config.base, options, &ca);
+    let cli = cli::Cli::new(options)?;
 
-    panic!("Hello, world!");
+    let ca = cli.create_ca(options, config.identity_file())?;
+    cli.find_ca_or_warn(&config, &ca)?;
+    let signed = cli.generate_and_sign_key(&config.base, options, &ca)?;
+    eprintln!("Generated new keyfile in {}", signed.path.display());
+
     Ok(())
 }
 

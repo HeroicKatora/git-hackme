@@ -1,8 +1,14 @@
-use directories::ProjectDirs;
+use directories::{ProjectDirs, UserDirs};
 use std::{fs, io::Error, path::PathBuf, sync::OnceLock};
+
+use crate::{
+    cli::{GitShellWrapper, LocalInterface},
+    template::Templates,
+};
 
 pub struct Configuration {
     pub base: ProjectDirs,
+    pub user: Option<UserDirs>,
     options: OnceLock<Options>,
 }
 
@@ -42,6 +48,7 @@ impl Configuration {
 
         Ok(SINGLETON.get_or_init(|| Configuration {
             base,
+            user: UserDirs::new(),
             options: OnceLock::new(),
         }))
     }
@@ -127,7 +134,13 @@ impl IdentityFile {
 }
 
 impl CertificateAuthority {
-    pub fn create_key(&self, opt: &Options, path: PathBuf) -> Result<SignedEphemeralKey, Error> {
+    pub fn create_key(
+        &self,
+        this_program_as_shell: &GitShellWrapper,
+        sources: &[LocalInterface],
+        opt: &Options,
+        path: PathBuf,
+    ) -> Result<SignedEphemeralKey, Error> {
         const FORBID_ALL: &[&str] = &[
             "no-agent-forwarding",
             "no-port-forwarding",
@@ -165,16 +178,48 @@ impl CertificateAuthority {
             sign_key.args(["-O", forbid]);
         }
 
+        let force_command = format!(
+            "force-command=SSH_ORIGINAL_COMMAND=\"{}\" \"{}\" shell",
+            "$SSH_ORIGINAL_COMMAND",
+            this_program_as_shell.canonical.display(),
+        );
+
+        let address_list = sources
+            .iter()
+            .map(|intf| format!("{}/{}", intf.masked_addr, intf.prefix_len))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let address_list = format!("source-address={address_list}");
+
         sign_key
-            // FIXME: make part of the key, not only its accepted list?
-            // .args(["-O", FORCE_COMMAND
-            // FIXME: make part of the key, not only its accepted list?
-            // .args(["-O", address_spec])
+            .args(["-O", &force_command])
+            .args(["-O", &address_list])
             .arg(&path);
 
         shell_out_to_command_success(sign_key)?;
 
         Ok(SignedEphemeralKey { path })
+    }
+
+    /// Generate the line to add to `authorized_keys`.
+    ///
+    /// Note that we do *not* add any forced command here but rather to the generated certificates.
+    /// We want to touch the `authorized_keys` file as little as possible. It's a precious file and
+    /// we do not even expect the user to make it available to us so directions for its contents
+    /// are all we limit ourselves to.
+    ///
+    /// The implication is that we can not modify it often and thus not specifically for each
+    /// project. Unfortunately there is no 'pattern' restriction for the command, only a perfect
+    /// match. Still the restriction on the certificate are expected to be as strict as we need
+    /// them. There isn't any possibility to run commands outside our control. Interestingly this
+    /// allows us to pass project-specific settings to certificates such as jailing. If you like
+    /// systemd then you might execute everything in an ephemeral unit with full system isolation
+    /// to everything except that directory. (To be added as an option, I really like that idea but
+    /// not everyone likes or has systemd while other executors for namespace isolation are just as
+    /// valid).
+    pub fn cert_line(&self, templates: &Templates) -> String {
+        templates.authorized_keys("ssh-ed25519", &self.pub_b64)
     }
 
     fn parse_rfc4716(out: &[u8]) -> Result<String, Error> {
@@ -201,6 +246,8 @@ impl CertificateAuthority {
 
                     line = continuation;
                 }
+
+                continue;
             }
 
             let mut buffer = vec![line];

@@ -98,7 +98,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-now"
+name = "git-hackme"
 version = "0.0.0"
 dependencies = [
  "directories",

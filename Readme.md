@@ -1,4 +1,4 @@
-Git Now is intended for spontaneous collaboration with `mob`.
+Git Hackme is intended for spontaneous collaboration with `mob`.
 
 It will turn a local repository into an collaboration server, allowing login
 from your current local network via a public SSH certificate. It intended use

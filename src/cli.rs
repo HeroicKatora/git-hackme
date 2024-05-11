@@ -33,10 +33,10 @@ impl Cli {
         let args_str: Vec<_> = arguments.iter().map(|os| os.to_str()).collect();
 
         match args_str[..] {
-            [] | [Some("--help")] => Self::exit_help(),
+            [] | [Some("--help")] => Self::exit_help(&binary),
             [Some("shell")] => return Err(Self::exec_shell()),
             [Some("init")] => {}
-            _ => Self::exit_fail(arguments),
+            _ => Self::exit_fail(&binary, arguments),
         }
 
         let templates = Templates::load();
@@ -72,14 +72,14 @@ impl Cli {
         })
     }
 
-    fn exit_help() -> ! {
-        eprintln!("Usage: git-now [init | shell]");
+    fn exit_help(bin: &PathBuf) -> ! {
+        eprintln!("Usage: {} [init | shell]", bin.display());
         std::process::exit(0)
     }
 
-    fn exit_fail(_arguments: Vec<OsString>) {
+    fn exit_fail(bin: &PathBuf, _arguments: Vec<OsString>) {
         eprintln!("Did not understand you there");
-        eprintln!("Usage: git-now [init | shell]");
+        eprintln!("Usage: {} [init | shell]", bin.display());
         std::process::exit(1)
     }
 

@@ -20,6 +20,13 @@ pub struct Options {
     /// The `ssh-keygen` program or wrapper to invoke.
     #[serde(default = "Options::default_keygen")]
     pub ssh_keygen: Vec<PathBuf>,
+    pub isolate: Option<Isolate>
+}
+
+#[derive(serde::Deserialize)]
+pub enum Isolate {
+    #[serde(rename = "systemd-run")]
+    SystemdRun
 }
 
 pub struct IdentityFile {

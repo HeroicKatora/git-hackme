@@ -3,6 +3,7 @@ use std::{ffi::OsString, fs, io::Error, path::Path, path::PathBuf};
 
 use std::os::unix::{fs::OpenOptionsExt as _, process::CommandExt as _};
 
+use crate::configuration::Isolate;
 use crate::{
     configuration::{
         CertificateAuthority, Configuration, IdentityFile, Options, SignedEphemeralKey,
@@ -42,7 +43,7 @@ impl Cli {
 
         match args_str[..] {
             [] | [Some("--help")] => Self::exit_help(&binary),
-            [Some("shell")] => return Err(Self::exec_shell(&config.base)),
+            [Some("shell")] => return Err(Self::exec_shell(config)),
             [Some("init")] => {
                 create_key_for = None;
                 join_http = None;
@@ -129,24 +130,78 @@ impl Cli {
         std::process::exit(1)
     }
 
-    fn exec_shell(dirs: &ProjectDirs) -> Error {
+    fn exec_shell(config: &Configuration) -> Error {
         let cmd = std::env::var_os("SSH_ORIGINAL_COMMAND").unwrap();
         let mnemonic = std::env::var_os(Cli::VAR_PROJECT).unwrap();
 
+        let options = config.options().unwrap();
+
+        let dirs = &config.base;
         let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
         let basedir = basedir.unwrap();
 
         let src_dir = basedir.join(&mnemonic).join(&mnemonic);
+        // As promised this should be a link.
+        let original_dir = src_dir.read_link().unwrap();
 
-        eprintln!("{}", src_dir.display());
+        /* What does not work for isolation:
+        *
+        * systemd-run with
+           .args([
+                 "--user",
+                 "--service-type=exec",
+                 "--wait",
+                 "--collect",
+           ])
+        * This fails to pipe input and output so it doesn't do anything.
+        *
+        * unshare
+        *   requests a tty and then git complains rightfully about no-login
+        *
+        * systemd-nspawn
+        *   requires privileges
+        */
 
-        let src_dir = src_dir.canonicalize().unwrap();
-
-        std::process::Command::new("git-shell")
-            .arg("-c")
-            .arg(cmd)
-            .current_dir(src_dir)
-            .exec()
+        match options.isolate {
+            None => {
+                let src_dir = src_dir.canonicalize().unwrap();
+                std::process::Command::new("git-shell")
+                    .arg("-c")
+                    .arg(cmd)
+                    .current_dir(src_dir)
+                    .exec()
+            }
+            Some(Isolate::SystemdRun) => {
+                eprintln!("Isolating with systemd-run and read-only paths");
+                std::process::Command::new("systemd-run")
+                    .args([
+                        "--user",
+                        "--service-type=exec",
+                        "--wait",
+                        "--collect",
+                        "--pipe",
+                        "-p",
+                        &format!("WorkingDirectory={}", src_dir.display()),
+                        "-p",
+                        "ReadOnlyPaths=/",
+                        "-p",
+                        "ProtectHome=tmpfs",
+                        // "-p",
+                        // &format!("ReadWritePaths={}", src_dir.display()),
+                        "-p",
+                        "ProtectSystem=strict",
+                        "-p",
+                        "TemporaryFileSystem=/",
+                        "-p",
+                        &format!("BindPaths={}:{}", original_dir.display(), src_dir.display())
+                    ])
+                    .arg("git-shell")
+                    .arg("-c")
+                    .arg(cmd)
+                    .current_dir(src_dir)
+                    .exec()
+            }
+        }
     }
 
     pub fn create_key_for(&self) -> Option<&Path> {

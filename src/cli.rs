@@ -1,3 +1,4 @@
+use core::net::{IpAddr, SocketAddr};
 use std::{ffi::OsString, fs, io::Error, path::Path, path::PathBuf};
 
 use std::os::unix::{fs::OpenOptionsExt as _, process::CommandExt as _};
@@ -25,7 +26,7 @@ pub struct GitShellWrapper {
 
 pub struct LocalInterface {
     pub prefix_len: u8,
-    pub masked_addr: core::net::IpAddr,
+    pub masked_addr: IpAddr,
 }
 
 impl Cli {
@@ -67,7 +68,25 @@ impl Cli {
         let templates = template::Templates::load();
 
         let binary = GitShellWrapper {
-            canonical: binary.canonicalize()?,
+            canonical: {
+                let dev_or_full = binary.canonicalize().map_or_else(
+                    |err| {
+                        if err.kind() == std::io::ErrorKind::NotFound {
+                            Ok(None)
+                        } else {
+                            Err(err)
+                        }
+                    },
+                    |canonical| Ok(Some(canonical)),
+                )?;
+
+                if let Some(canonical) = dev_or_full {
+                    canonical
+                } else {
+                    // Surely we find ourselves, eh?
+                    which::which(env!("CARGO_BIN_NAME")).unwrap()
+                }
+            },
         };
 
         let interfaces = netdev::get_interfaces()
@@ -168,8 +187,7 @@ impl Cli {
         }
 
         let temporary = ca.create_key(&self.binary, &self.interfaces, options, path)?;
-        let digest = temporary.digest(options)?;
-        let mnemonic = SignedEphemeralKey::digest_to_mnemonic(digest);
+        let mnemonic = temporary.mnemonic(options)?;
 
         let fulldir = basedir.join(&mnemonic);
         std::fs::create_dir(&fulldir)?;
@@ -192,7 +210,11 @@ impl Cli {
         Ok(SignedEphemeralKey { path })
     }
 
-    pub fn recreate_index(&self, config: &Configuration) -> Result<(), Error> {
+    pub fn recreate_index(
+        &self,
+        config: &Configuration,
+        find_project: Option<&str>,
+    ) -> Result<(), Error> {
         let dirs = &config.base;
         // FIXME: duplicate code to access this directory, should be cached and unified in
         // `Configuration` with proper error handling if we can not find a base directory. Some
@@ -227,16 +249,6 @@ impl Cli {
         std::fs::create_dir_all(basedir)?;
         std::fs::write(basedir.join("index.html"), index)?;
 
-        if Self::detect_python() {
-            eprintln!("Have data ready to serve, suggesting a server with Python");
-
-            let servedir = basedir.display().to_string();
-            eprintln!(
-                "python3 -m http.server -d \"{}\"",
-                servedir.replace('"', "\\\"")
-            );
-        }
-
         let interfaces = netdev::get_interfaces();
         let mut likely_if: Vec<_> = interfaces
             .into_iter()
@@ -259,15 +271,40 @@ impl Cli {
             })
             .collect();
 
-        if !likely_if.is_empty() {
-            // Most likely should be last so we min-sort on this.
-            likely_if.sort_by_key(|(intf, _)| (intf.default, intf.transmit_speed));
+        // Most likely should be last so we min-sort on this.
+        likely_if.sort_by_key(|(intf, _)| (intf.default, intf.transmit_speed));
+        let Some((_, most_likely_addr)) = likely_if.last() else {
+            return Ok(());
+        };
 
-            eprintln!("Reachable via the following interfaces:");
-            for (intf, network) in likely_if {
-                let name = intf.friendly_name.as_ref().unwrap_or(&intf.name);
-                eprintln!("if {} at {}", name, network.addr());
-            }
+        // The Python default port. FIXME: option to user-define this guess based on a suggested
+        // server or even some trigger for start the server service.
+        let most_likely_sock = SocketAddr::new(most_likely_addr.addr(), 8000);
+        if Self::detect_server(most_likely_sock, find_project) {
+            eprintln!("Have data ready to serve, server appears running at {}", {
+                let mut url: url::Url = "http://dummy.local/".parse().unwrap();
+                url.set_ip_host(most_likely_sock.ip()).unwrap();
+                url.set_port(Some(most_likely_sock.port())).unwrap();
+                url
+            });
+
+            return Ok(());
+        };
+
+        if Self::detect_python() {
+            eprintln!("Have data ready to serve, suggesting a server with Python");
+
+            let servedir = basedir.display().to_string();
+            eprintln!(
+                "python3 -m http.server -d \"{}\"",
+                servedir.replace('"', "\\\"")
+            );
+        }
+
+        eprintln!("Reachable via the following interfaces:");
+        for (intf, network) in likely_if {
+            let name = intf.friendly_name.as_ref().unwrap_or(&intf.name);
+            eprintln!("if {} at {}", name, network.addr());
         }
 
         Ok(())
@@ -281,6 +318,20 @@ impl Cli {
             .stderr(std::process::Stdio::null())
             .status()
             .map_or(false, |_| true)
+    }
+
+    fn detect_server(sock: SocketAddr, project: Option<&str>) -> bool {
+        let mut url: url::Url = "http://dummy.local/".parse().unwrap();
+        url.set_ip_host(sock.ip()).unwrap();
+        url.set_port(Some(sock.port())).unwrap();
+
+        if let Some(mnemonic) = project {
+            url.set_path(&format!("{mnemonic}/key-cert.pub"));
+        }
+
+        ureq::request_url("GET", &url)
+            .call()
+            .map_or(false, |response| response.status() == 200)
     }
 
     pub fn join(&self, config: &Configuration, url: &url::Url) -> Result<(), Error> {

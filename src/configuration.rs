@@ -100,7 +100,7 @@ impl IdentityFile {
             .args([
                 "-C",
                 concat!(
-                    "Generated certificate authority by and for",
+                    "Generated certificate authority by and for ",
                     env!("CARGO_PKG_NAME")
                 ),
             ])
@@ -313,6 +313,10 @@ impl CertificateAuthority {
 impl SignedEphemeralKey {
     pub fn digest(&self, opt: &Options) -> Result<[u8; 32], Error> {
         Self::digest_at(&self.path, opt)
+    }
+
+    pub fn mnemonic(&self, opt: &Options) -> Result<String, Error> {
+        self.digest(opt).map(Self::digest_to_mnemonic)
     }
 
     pub fn digest_to_mnemonic(digest: [u8; 32]) -> String {

@@ -21,9 +21,20 @@ fn _do() -> Result<(), std::io::Error> {
     let cli = cli::Cli::new(options)?;
 
     let ca = cli.create_ca(options, config.identity_file())?;
+
     cli.find_ca_or_warn(&config, &ca)?;
-    let signed = cli.generate_and_sign_key(&config.base, options, &ca)?;
-    eprintln!("Generated new keyfile in {}", signed.path.display());
+
+    if let Some(_path) = cli.create_key_for() {
+        let signed = cli.generate_and_sign_key(&config.base, options, &ca)?;
+        eprintln!("Generated new keyfile in {}", signed.path.display());
+    }
+
+    if let Some(join) = cli.join_url() {
+        cli.find_include_or_warn(&config)?;
+        cli.find_env_or_warn(&config)?;
+
+        cli.join(&config, join)?;
+    }
 
     Ok(())
 }

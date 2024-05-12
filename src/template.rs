@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::path::Path;
 use tinytemplate::{error::Error, TinyTemplate};
 
 pub struct Templates {
@@ -7,6 +8,8 @@ pub struct Templates {
 
 impl Templates {
     const TEMPLATE_AUTH: &'static str = "ssh-authorized_keys";
+    const TEMPLATE_SSH_CONFIG: &'static str = "ssh-config";
+    const TEMPLATE_KEY_CONFIG: &'static str = "key-config";
 
     pub fn load() -> Self {
         let mut tiny = TinyTemplate::new();
@@ -14,6 +17,18 @@ impl Templates {
         tiny.add_template(
             Self::TEMPLATE_AUTH,
             include_str!("../template/autorized_keys").trim_end(),
+        )
+        .unwrap();
+
+        tiny.add_template(
+            Self::TEMPLATE_SSH_CONFIG,
+            include_str!("../template/ssh_config").trim_end(),
+        )
+        .unwrap();
+
+        tiny.add_template(
+            Self::TEMPLATE_KEY_CONFIG,
+            include_str!("../template/key-ssh_config").trim_end(),
         )
         .unwrap();
 
@@ -43,12 +58,43 @@ impl Templates {
             certkey: &'a str,
         }
 
+        let value = Value { keytype, certkey };
+        self.tiny.render(Self::TEMPLATE_AUTH, &value).unwrap()
+    }
+
+    pub fn ssh_config(&self, basedir: &Path) -> String {
+        #[derive(serde::Serialize)]
+        struct Value<'a> {
+            basedir: &'a Path,
+        }
+
+        let value = Value { basedir };
+        self.tiny.render(Self::TEMPLATE_SSH_CONFIG, &value).unwrap()
+    }
+
+    pub fn key_ssh_config(&self, url: &url::Url, mnemonic: &str) -> String {
+        use crate::cli::Cli;
+
+        #[derive(serde::Serialize)]
+        struct Value<'a> {
+            mnemonic: &'a str,
+            host: &'a str,
+            user: &'a str,
+            runtime_var: &'a str,
+        }
+
+        let host = url.host_str().unwrap();
+        let user = url.username();
+        let runtime_var = format!("${{{}}}", Cli::RUNTIME_VAR);
+
         let value = Value {
-            keytype,
-            certkey,
+            mnemonic,
+            host,
+            user,
+            runtime_var: &runtime_var,
         };
 
-        self.tiny.render(Self::TEMPLATE_AUTH, &value).unwrap()
+        self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()
     }
 
     fn arg_escape(val: &Value, into: &mut String) -> Result<(), Error> {

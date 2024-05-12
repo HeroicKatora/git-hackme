@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD_NO_PAD as B64_STANDARD, Engine as _};
 use directories::{ProjectDirs, UserDirs};
 use std::{fs, io::Error, path::PathBuf, sync::OnceLock};
 
@@ -175,6 +176,7 @@ impl CertificateAuthority {
 
         sign_key
             .args(opts)
+            .arg("-q")
             .arg("-s")
             .arg(&self.path)
             .args(["-I", "ssh-now-ephemeral-key"])
@@ -294,6 +296,39 @@ impl CertificateAuthority {
                 "Unrecognized key type in fingerprint for certificate authority",
             ))
         }
+    }
+}
+
+impl SignedEphemeralKey {
+    pub fn digest(&self, opt: &Options) -> Result<[u8; 32], Error> {
+        let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
+        let mut describe_key = std::process::Command::new(&ssh_keygen);
+
+        describe_key
+            .args(opts)
+            .arg("-l")
+            .arg("-f")
+            .arg(&self.path)
+            .args(["-E", "sha256"]);
+
+        let output = describe_key.output()?;
+        Self::parse_fingerprint(&output.stdout)
+    }
+
+    fn parse_fingerprint(stdout: &[u8]) -> Result<[u8; 32], Error> {
+        let text = std::str::from_utf8(stdout)
+            .map_err(|err| Error::new(std::io::ErrorKind::InvalidData, err))?;
+
+        let start = text.find("SHA256:").unwrap();
+        let text = &text[start + 7..];
+        let end = text.find(" ").unwrap();
+        let text = &text[..end];
+
+        let asb64: Vec<u8> = B64_STANDARD
+            .decode(text)
+            .map_err(|err| Error::new(std::io::ErrorKind::InvalidData, err))?;
+
+        Ok(asb64.as_slice().try_into().unwrap())
     }
 }
 

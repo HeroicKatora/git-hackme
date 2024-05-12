@@ -1,0 +1,5 @@
+Host {mnemonic}.git-hackme
+  Hostname {host}
+  User {user}
+  IdentityFile "{runtime_var}/.join/{mnemonic}/key"
+

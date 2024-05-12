@@ -1,4 +1,6 @@
-use std::{ffi::OsString, fs, io::Error, path::PathBuf};
+use std::{ffi::OsString, fs, io::Error, path::Path, path::PathBuf};
+
+use std::os::unix::{fs::OpenOptionsExt as _, process::CommandExt as _};
 
 use crate::{
     configuration::{
@@ -7,12 +9,15 @@ use crate::{
     template::Templates,
 };
 
+use bip39_lexical_data::WL_BIP39;
 use directories::ProjectDirs;
 
 pub struct Cli {
     binary: GitShellWrapper,
     interfaces: Vec<LocalInterface>,
     templates: Templates,
+    create_key_for: Option<PathBuf>,
+    join_http: Option<url::Url>,
 }
 
 pub struct GitShellWrapper {
@@ -32,12 +37,33 @@ impl Cli {
         let arguments: Vec<_> = args.collect();
         let args_str: Vec<_> = arguments.iter().map(|os| os.to_str()).collect();
 
+        let create_key_for;
+        let join_http;
+
         match args_str[..] {
             [] | [Some("--help")] => Self::exit_help(&binary),
             [Some("shell")] => return Err(Self::exec_shell()),
-            [Some("init")] => {}
+            [Some("init")] => {
+                create_key_for = None;
+                join_http = None;
+            }
+            [Some("start")] => {
+                create_key_for = Some(std::env::current_dir()?);
+                join_http = None;
+            }
+            [Some("join"), Some(url)] => {
+                create_key_for = None;
+                let from_url: url::Url = url.parse().unwrap();
+
+                assert!(
+                    ["http", "https"].contains(&from_url.scheme()),
+                    "Unhandled protocol to join"
+                );
+
+                join_http = Some(from_url);
+            }
             _ => Self::exit_fail(&binary, arguments),
-        }
+        };
 
         let templates = Templates::load();
 
@@ -69,6 +95,8 @@ impl Cli {
             binary,
             interfaces,
             templates,
+            create_key_for,
+            join_http,
         })
     }
 
@@ -77,20 +105,26 @@ impl Cli {
         std::process::exit(0)
     }
 
-    fn exit_fail(bin: &PathBuf, _arguments: Vec<OsString>) {
+    fn exit_fail(bin: &PathBuf, _arguments: Vec<OsString>) -> ! {
         eprintln!("Did not understand you there");
         eprintln!("Usage: {} [init | shell]", bin.display());
         std::process::exit(1)
     }
 
     fn exec_shell() -> Error {
-        use std::os::unix::process::CommandExt as _;
-
         let cmd = std::env::var_os("SSH_ORIGINAL_COMMAND").unwrap();
         std::process::Command::new("git-shell")
             .arg("-c")
             .arg(cmd)
             .exec()
+    }
+
+    pub fn create_key_for(&self) -> Option<&Path> {
+        self.create_key_for.as_deref()
+    }
+
+    pub fn join_url(&self) -> Option<&url::Url> {
+        self.join_http.as_ref()
     }
 
     pub fn create_ca(
@@ -106,7 +140,7 @@ impl Cli {
         id.into_ca(opt)
     }
 
-    pub(crate) fn generate_and_sign_key(
+    pub fn generate_and_sign_key(
         &self,
         dirs: &ProjectDirs,
         options: &Options,
@@ -117,15 +151,103 @@ impl Cli {
 
         std::fs::create_dir_all(basedir)?;
 
-        let path = basedir.join("ssh-new-ephemeral");
+        let path = basedir.join(".ssh-new-ephemeral");
         if path.try_exists()? {
             std::fs::remove_file(&path)?;
         }
 
-        ca.create_key(&self.binary, &self.interfaces, options, path)
+        let temporary = ca.create_key(&self.binary, &self.interfaces, options, path)?;
+        let digest = temporary.digest(options)?;
+
+        const STEP: usize = {
+            let step = WL_BIP39.len() / 256;
+            assert!(step > 0);
+            step
+        };
+
+        let words: [u8; 4] = digest[..4].try_into().unwrap();
+        let words = words.map(|b| WL_BIP39[usize::from(b) * STEP]);
+        let phrase = words.join("-");
+
+        let fulldir = basedir.join(phrase);
+        std::fs::create_dir(&fulldir)?;
+
+        let path = fulldir.join("key");
+
+        std::fs::rename(basedir.join(".ssh-new-ephemeral"), &path)?;
+        std::fs::rename(
+            basedir.join(".ssh-new-ephemeral.pub"),
+            fulldir.join("key.pub"),
+        )?;
+        std::fs::rename(
+            basedir.join(".ssh-new-ephemeral-cert.pub"),
+            fulldir.join("key-cert.pub"),
+        )?;
+
+        Ok(SignedEphemeralKey { path })
     }
 
-    pub(crate) fn find_ca_or_warn(
+    pub fn join(&self, config: &Configuration, url: &url::Url) -> Result<(), Error> {
+        let dirs = &config.base;
+
+        let Some(segments) = url.path_segments() else {
+            panic!("Trying to join cannot-be-base URL, should be caught earlier");
+        };
+
+        let Some(horse_battery) = segments.last() else {
+            panic!("Not an encoded name, obviously");
+        };
+
+        assert!(horse_battery.chars().all(|ch| ch.is_ascii_graphic()));
+
+        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
+        let basedir = basedir.unwrap();
+
+        // FIXME: duplicate code that may diverge.
+        let ssh_config_file = config.base.config_local_dir().join("ssh_config");
+        let ssh_config = self.templates.ssh_config(&basedir);
+        std::fs::write(ssh_config_file, ssh_config)?;
+
+        let joindir = basedir.join(format!(".join/{horse_battery}"));
+        std::fs::create_dir_all(&joindir)?;
+
+        #[deprecated = "Network errors from ureq should not panic!"]
+        fn _ureq(err: ureq::Error) -> std::io::Error {
+            panic!("Ureq handling {}", err)
+        }
+
+        for part in ["key", "key.pub", "key-cert.pub"] {
+            let file = joindir.join(part);
+            let mut url = url.clone();
+
+            {
+                let mut segments = url.path_segments_mut().unwrap();
+                segments.pop_if_empty();
+                segments.push(part);
+            }
+
+            let response = ureq::request_url("GET", &url).call().map_err(_ureq)?;
+
+            assert!(response.status() == 200);
+            let mut reader = response.into_reader();
+            let mut writer = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .mode(0o600)
+                .open(&file)?;
+
+            std::io::copy(&mut reader, &mut writer)?;
+        }
+
+        let key_config = self.templates.key_ssh_config(url, horse_battery);
+        std::fs::write(joindir.join("ssh_config"), key_config)?;
+
+        Ok(())
+    }
+
+    pub const RUNTIME_VAR: &'static str = "GIT_HACKME_RUNTIME_DIR";
+
+    pub fn find_ca_or_warn(
         &self,
         dirs: &Configuration,
         ca: &CertificateAuthority,
@@ -164,12 +286,84 @@ impl Cli {
         Ok(())
     }
 
+    pub fn find_include_or_warn(&self, dirs: &Configuration) -> Result<(), Error> {
+        let Some(config) = Self::find_ssh_config(dirs) else {
+            return Ok(());
+        };
+
+        let ssh_config_file = dirs.base.config_local_dir().join("ssh_config");
+        let expected_line = match Self::include_line(dirs, &ssh_config_file) {
+            Ok(path) => {
+                let arg = path.display().to_string().replace('\"', "\\\"");
+                format!("Include \"~/{}\"", arg)
+            }
+            Err(path) => {
+                let arg = path.display().to_string().replace('\"', "\\\"");
+                format!("Include \"{}\"", arg)
+            }
+        };
+
+        if let Ok(file) = fs::File::open(&config) {
+            let file = std::io::BufReader::new(file);
+            for line in std::io::BufRead::lines(file) {
+                if line? == expected_line {
+                    return Ok(());
+                }
+            }
+        }
+
+        eprintln!("Your ssh config does not include the dynamically provided identities.");
+        eprintln!("Insert:");
+        eprintln!("{expected_line}");
+        eprintln!("in your authorized_keys file `{}`", config.display());
+
+        Ok(())
+    }
+
+    pub fn find_env_or_warn(&self, dirs: &Configuration) -> Result<(), Error> {
+        let Some(runtime) = dirs.base.runtime_dir() else {
+            return Ok(());
+        };
+
+        let expected_line = std::ffi::OsString::from(&runtime);
+        let real_env = std::env::var_os(Self::RUNTIME_VAR);
+
+        if real_env == Some(expected_line) {
+            return Ok(());
+        }
+
+        eprintln!("Your environment config does not specify the expected runtime directory");
+        // We print this so one can source this command!
+        println!("export {}={}", Self::RUNTIME_VAR, runtime.display());
+
+        Ok(())
+    }
+
+    fn include_line<'lt>(dirs: &'lt Configuration, file: &'lt Path) -> Result<PathBuf, &'lt Path> {
+        fn strip_home(dirs: &Configuration, file: &Path) -> Option<PathBuf> {
+            let home = dirs.user.as_ref()?.home_dir();
+            let relative = file.strip_prefix(home).ok()?;
+            Some(relative.to_path_buf())
+        }
+
+        strip_home(dirs, file).ok_or(file)
+    }
+
     fn find_authorized_keys(dirs: &Configuration) -> Vec<PathBuf> {
         if let Some(user) = &dirs.user {
             // FIXME: Inspect `/etc/ssh/sshd_config` for `AuthorizedKeysFile`.
             vec![user.home_dir().join(".ssh/authorized_keys")]
         } else {
             vec![]
+        }
+    }
+
+    fn find_ssh_config(dirs: &Configuration) -> Option<PathBuf> {
+        if let Some(user) = &dirs.user {
+            // FIXME: Inspect `/etc/ssh/sshd_config` etc.
+            Some(user.home_dir().join(".ssh/config"))
+        } else {
+            None
         }
     }
 }

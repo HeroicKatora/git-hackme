@@ -1,6 +1,6 @@
 [package]
 name = "git-hackme"
-version = "0.0.0"
+version = "1.0.0-beta"
 edition = "2021"
 
 [dependencies]

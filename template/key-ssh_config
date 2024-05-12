@@ -1,5 +1,7 @@
-Host {mnemonic}.git-hackme
+Host {mnemonic}.hackme.local
   Hostname {host}
   User {user}
+  IdentityAgent none
+  CheckHostIP no
+  UpdateHostKeys no
   IdentityFile "{runtime_var}/.join/{mnemonic}/key"
-

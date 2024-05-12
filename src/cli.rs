@@ -223,6 +223,8 @@ impl Cli {
         let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
         let basedir = basedir.unwrap();
 
+        std::fs::create_dir_all(basedir)?;
+
         let mut projects = vec![];
         for project in std::fs::read_dir(basedir)? {
             let Ok(project) = project else {
@@ -244,7 +246,7 @@ impl Cli {
             projects.push(template::Project { mnemonic });
         }
 
-        let index = self.templates.index(&projects);
+        let index = self.templates.index(config.username(), &projects);
 
         std::fs::create_dir_all(basedir)?;
         std::fs::write(basedir.join("index.html"), index)?;

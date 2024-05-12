@@ -12,6 +12,7 @@ pub struct Configuration {
     pub base: ProjectDirs,
     pub user: Option<UserDirs>,
     options: OnceLock<Options>,
+    username: OnceLock<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -52,6 +53,7 @@ impl Configuration {
             base,
             user: UserDirs::new(),
             options: OnceLock::new(),
+            username: OnceLock::new(),
         }))
     }
 
@@ -69,6 +71,10 @@ impl Configuration {
         let file = fs::File::open(file)?;
         let options: Options = serde_json::de::from_reader(file)?;
         Ok(self.options.get_or_init(|| options))
+    }
+
+    pub fn username(&self) -> &str {
+        self.username.get_or_init(whoami::username)
     }
 
     pub fn identity_file(&self) -> IdentityFile {

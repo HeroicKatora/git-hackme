@@ -109,13 +109,14 @@ impl Templates {
         self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()
     }
 
-    pub fn index(&self, projects: &[Project]) -> String {
+    pub fn index(&self, username: &str, projects: &[Project]) -> String {
         #[derive(serde::Serialize)]
         struct Value<'a> {
+            username: &'a str,
             projects: &'a [Project],
         }
 
-        let value = Value { projects };
+        let value = Value { username, projects };
         self.tiny.render(Self::TEMPLATE_INDEX, &value).unwrap()
     }
 

@@ -1,9 +1,10 @@
 use base64::{engine::general_purpose::STANDARD_NO_PAD as B64_STANDARD, Engine as _};
+use bip39_lexical_data::WL_BIP39;
 use directories::{ProjectDirs, UserDirs};
 use std::{fs, io::Error, path::PathBuf, sync::OnceLock};
 
 use crate::{
-    cli::{GitShellWrapper, LocalInterface},
+    cli::{Cli, GitShellWrapper, LocalInterface},
     template::Templates,
 };
 
@@ -186,10 +187,20 @@ impl CertificateAuthority {
             sign_key.args(["-O", forbid]);
         }
 
+        let digest = SignedEphemeralKey::digest_at(&path, opt)?;
+        let mnemonic = SignedEphemeralKey::digest_to_mnemonic(digest);
+
+        assert!(
+            mnemonic.chars().all(|c| c.is_ascii_graphic()),
+            "Would have needed escaping"
+        );
+
         let force_command = format!(
-            "force-command=SSH_ORIGINAL_COMMAND=\"{}\" \"{}\" shell",
+            "force-command=SSH_ORIGINAL_COMMAND=\"{}\" {var}={mnemonic} \"{}\" shell",
             "$SSH_ORIGINAL_COMMAND",
             this_program_as_shell.canonical.display(),
+            var = Cli::VAR_PROJECT,
+            mnemonic = mnemonic,
         );
 
         let address_list = sources
@@ -301,6 +312,22 @@ impl CertificateAuthority {
 
 impl SignedEphemeralKey {
     pub fn digest(&self, opt: &Options) -> Result<[u8; 32], Error> {
+        Self::digest_at(&self.path, opt)
+    }
+
+    pub fn digest_to_mnemonic(digest: [u8; 32]) -> String {
+        const STEP: usize = {
+            let step = WL_BIP39.len() / 256;
+            assert!(step > 0);
+            step
+        };
+
+        let words: [u8; 4] = digest[..4].try_into().unwrap();
+        let words = words.map(|b| WL_BIP39[usize::from(b) * STEP]);
+        words.join("-")
+    }
+
+    fn digest_at(path: &PathBuf, opt: &Options) -> Result<[u8; 32], Error> {
         let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
         let mut describe_key = std::process::Command::new(&ssh_keygen);
 
@@ -308,7 +335,7 @@ impl SignedEphemeralKey {
             .args(opts)
             .arg("-l")
             .arg("-f")
-            .arg(&self.path)
+            .arg(path)
             .args(["-E", "sha256"]);
 
         let output = describe_key.output()?;

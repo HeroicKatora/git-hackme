@@ -6,16 +6,15 @@ use crate::{
     configuration::{
         CertificateAuthority, Configuration, IdentityFile, Options, SignedEphemeralKey,
     },
-    template::Templates,
+    template,
 };
 
-use bip39_lexical_data::WL_BIP39;
 use directories::ProjectDirs;
 
 pub struct Cli {
     binary: GitShellWrapper,
     interfaces: Vec<LocalInterface>,
-    templates: Templates,
+    templates: template::Templates,
     create_key_for: Option<PathBuf>,
     join_http: Option<url::Url>,
 }
@@ -30,7 +29,7 @@ pub struct LocalInterface {
 }
 
 impl Cli {
-    pub fn new(_: &Options) -> Result<Self, Error> {
+    pub fn new(config: &Configuration) -> Result<Self, Error> {
         let mut args = std::env::args_os();
         let binary = PathBuf::from(args.next().unwrap());
 
@@ -42,7 +41,7 @@ impl Cli {
 
         match args_str[..] {
             [] | [Some("--help")] => Self::exit_help(&binary),
-            [Some("shell")] => return Err(Self::exec_shell()),
+            [Some("shell")] => return Err(Self::exec_shell(&config.base)),
             [Some("init")] => {
                 create_key_for = None;
                 join_http = None;
@@ -65,7 +64,7 @@ impl Cli {
             _ => Self::exit_fail(&binary, arguments),
         };
 
-        let templates = Templates::load();
+        let templates = template::Templates::load();
 
         let binary = GitShellWrapper {
             canonical: binary.canonicalize()?,
@@ -111,11 +110,23 @@ impl Cli {
         std::process::exit(1)
     }
 
-    fn exec_shell() -> Error {
+    fn exec_shell(dirs: &ProjectDirs) -> Error {
         let cmd = std::env::var_os("SSH_ORIGINAL_COMMAND").unwrap();
+        let mnemonic = std::env::var_os(Cli::VAR_PROJECT).unwrap();
+
+        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
+        let basedir = basedir.unwrap();
+
+        let src_dir = basedir.join(&mnemonic).join(&mnemonic);
+
+        eprintln!("{}", src_dir.display());
+
+        let src_dir = src_dir.canonicalize().unwrap();
+
         std::process::Command::new("git-shell")
             .arg("-c")
             .arg(cmd)
+            .current_dir(src_dir)
             .exec()
     }
 
@@ -158,18 +169,9 @@ impl Cli {
 
         let temporary = ca.create_key(&self.binary, &self.interfaces, options, path)?;
         let digest = temporary.digest(options)?;
+        let mnemonic = SignedEphemeralKey::digest_to_mnemonic(digest);
 
-        const STEP: usize = {
-            let step = WL_BIP39.len() / 256;
-            assert!(step > 0);
-            step
-        };
-
-        let words: [u8; 4] = digest[..4].try_into().unwrap();
-        let words = words.map(|b| WL_BIP39[usize::from(b) * STEP]);
-        let phrase = words.join("-");
-
-        let fulldir = basedir.join(phrase);
+        let fulldir = basedir.join(&mnemonic);
         std::fs::create_dir(&fulldir)?;
 
         let path = fulldir.join("key");
@@ -184,7 +186,48 @@ impl Cli {
             fulldir.join("key-cert.pub"),
         )?;
 
+        // Create the project's direct link to the source repository
+        std::os::unix::fs::symlink(std::env::current_dir()?, fulldir.join(&mnemonic))?;
+
         Ok(SignedEphemeralKey { path })
+    }
+
+    pub fn recreate_index(&self, config: &Configuration) -> Result<(), Error> {
+        let dirs = &config.base;
+        // FIXME: duplicate code to access this directory, should be cached and unified in
+        // `Configuration` with proper error handling if we can not find a base directory. Some
+        // code might also rely on the automatic cleanup we can do here? Or should we perform one
+        // manually when key signatures get invalidated?
+        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
+        let basedir = basedir.unwrap();
+
+        let mut projects = vec![];
+        for project in std::fs::read_dir(basedir)? {
+            let Ok(project) = project else {
+                continue;
+            };
+
+            let entry_name = project.file_name();
+            // Find out if this may be a valid entry by inspecting the name. It should be generated
+            // according to our mnemonic file name patterns.
+            let Some(name) = entry_name.to_str() else {
+                continue;
+            };
+
+            if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                continue;
+            }
+
+            let mnemonic = name.to_owned();
+            projects.push(template::Project { mnemonic });
+        }
+
+        let index = self.templates.index(&projects);
+
+        std::fs::create_dir_all(basedir)?;
+        std::fs::write(basedir.join("index.html"), index)?;
+
+        Ok(())
     }
 
     pub fn join(&self, config: &Configuration, url: &url::Url) -> Result<(), Error> {
@@ -245,7 +288,8 @@ impl Cli {
         Ok(())
     }
 
-    pub const RUNTIME_VAR: &'static str = "GIT_HACKME_RUNTIME_DIR";
+    pub const VAR_RUNTIME: &'static str = "GIT_HACKME_RUNTIME_DIR";
+    pub const VAR_PROJECT: &'static str = "GIT_HACKME_PROJECT";
 
     pub fn find_ca_or_warn(
         &self,
@@ -326,7 +370,7 @@ impl Cli {
         };
 
         let expected_line = std::ffi::OsString::from(&runtime);
-        let real_env = std::env::var_os(Self::RUNTIME_VAR);
+        let real_env = std::env::var_os(Self::VAR_RUNTIME);
 
         if real_env == Some(expected_line) {
             return Ok(());
@@ -334,7 +378,7 @@ impl Cli {
 
         eprintln!("Your environment config does not specify the expected runtime directory");
         // We print this so one can source this command!
-        println!("export {}={}", Self::RUNTIME_VAR, runtime.display());
+        println!("export {}={}", Self::VAR_RUNTIME, runtime.display());
 
         Ok(())
     }

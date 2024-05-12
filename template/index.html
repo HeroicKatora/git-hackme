@@ -1,0 +1,27 @@
+<head>
+	<script>
+		/* FIXME: so many escapes, this should come from a separate file */
+		const project_list = [
+			{{ for project in projects }}
+				"{ project.mnemonic }",
+			{{ endfor }}
+		];
+
+		window.onload = () => \{
+			for (let mn of project_list) \{
+				document.getElementById(`cmd-$\{mn}`).innerText = `git-hackme join "$\{window.location}/$\{mn}"`;
+			}
+		};
+	</script>
+</head>
+<html>
+	<main>
+		Project List
+	{{ for project in projects }}
+		<div>
+			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
+			<p><pre id=cmd-{project.mnemonic}>Requires Js</pre></p>
+		</div>
+	{{ endfor }}
+	</main>
+</html>

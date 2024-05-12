@@ -6,10 +6,16 @@ pub struct Templates {
     tiny: TinyTemplate<'static>,
 }
 
+#[derive(serde::Serialize)]
+pub struct Project {
+    pub mnemonic: String,
+}
+
 impl Templates {
     const TEMPLATE_AUTH: &'static str = "ssh-authorized_keys";
     const TEMPLATE_SSH_CONFIG: &'static str = "ssh-config";
     const TEMPLATE_KEY_CONFIG: &'static str = "key-config";
+    const TEMPLATE_INDEX: &'static str = "index-html";
 
     pub fn load() -> Self {
         let mut tiny = TinyTemplate::new();
@@ -29,6 +35,12 @@ impl Templates {
         tiny.add_template(
             Self::TEMPLATE_KEY_CONFIG,
             include_str!("../template/key-ssh_config").trim_end(),
+        )
+        .unwrap();
+
+        tiny.add_template(
+            Self::TEMPLATE_INDEX,
+            include_str!("../template/index.html").trim_end(),
         )
         .unwrap();
 
@@ -85,7 +97,7 @@ impl Templates {
 
         let host = url.host_str().unwrap();
         let user = url.username();
-        let runtime_var = format!("${{{}}}", Cli::RUNTIME_VAR);
+        let runtime_var = format!("${{{}}}", Cli::VAR_RUNTIME);
 
         let value = Value {
             mnemonic,
@@ -95,6 +107,16 @@ impl Templates {
         };
 
         self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()
+    }
+
+    pub fn index(&self, projects: &[Project]) -> String {
+        #[derive(serde::Serialize)]
+        struct Value<'a> {
+            projects: &'a [Project],
+        }
+
+        let value = Value { projects };
+        self.tiny.render(Self::TEMPLATE_INDEX, &value).unwrap()
     }
 
     fn arg_escape(val: &Value, into: &mut String) -> Result<(), Error> {

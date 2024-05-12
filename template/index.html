@@ -20,7 +20,8 @@
 	{{ for project in projects }}
 		<div>
 			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
-			<p><pre id=cmd-{project.mnemonic}>Requires Js</pre></p>
+			<p><pre id=cmd-join-{project.mnemonic}>Join command requires Js</pre></p>
+			<p><pre id=cmd-clone-{project.mnemonic}>git clone { project.mnemonic }:</pre></p>
 		</div>
 	{{ endfor }}
 	</main>

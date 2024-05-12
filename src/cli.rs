@@ -227,7 +227,60 @@ impl Cli {
         std::fs::create_dir_all(basedir)?;
         std::fs::write(basedir.join("index.html"), index)?;
 
+        if Self::detect_python() {
+            eprintln!("Have data ready to serve, suggesting a server with Python");
+
+            let servedir = basedir.display().to_string();
+            eprintln!(
+                "python3 -m http.server -d \"{}\"",
+                servedir.replace('"', "\\\"")
+            );
+        }
+
+        let interfaces = netdev::get_interfaces();
+        let mut likely_if: Vec<_> = interfaces
+            .into_iter()
+            .filter_map(|intf| {
+                match intf.if_type {
+                    netdev::interface::InterfaceType::Ethernet
+                    | netdev::interface::InterfaceType::Wireless80211 => {}
+                    _ => return None,
+                }
+
+                let ipv4 = intf.ipv4.iter().map(|&ip| netdev::ip::IpNet::from(ip));
+                let ipv6 = intf.ipv6.iter().map(|&ip| netdev::ip::IpNet::from(ip));
+
+                let Some(addr) = ipv4.chain(ipv6).next() else {
+                    // Not up.
+                    return None;
+                };
+
+                Some((intf, addr))
+            })
+            .collect();
+
+        if !likely_if.is_empty() {
+            // Most likely should be last so we min-sort on this.
+            likely_if.sort_by_key(|(intf, _)| (intf.default, intf.transmit_speed));
+
+            eprintln!("Reachable via the following interfaces:");
+            for (intf, network) in likely_if {
+                let name = intf.friendly_name.as_ref().unwrap_or(&intf.name);
+                eprintln!("if {} at {}", name, network.addr());
+            }
+        }
+
         Ok(())
+    }
+
+    fn detect_python() -> bool {
+        std::process::Command::new("python3")
+            .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_or(false, |_| true)
     }
 
     pub fn join(&self, config: &Configuration, url: &url::Url) -> Result<(), Error> {

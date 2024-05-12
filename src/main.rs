@@ -26,7 +26,9 @@ fn _do() -> Result<(), std::io::Error> {
     if let Some(_path) = cli.create_key_for() {
         let signed = cli.generate_and_sign_key(&config.base, options, &ca)?;
         eprintln!("Generated new keyfile in {}", signed.path.display());
+    }
 
+    if cli.create_key_for().is_some() || cli.join_url().is_none() {
         cli.recreate_index(&config)?;
     }
 

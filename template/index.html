@@ -22,7 +22,8 @@
 	<main>
 		<h1>Hackable Projects</h1>
 
-		<h3>Brought by <div class="icon-github"><a href="https://github.com/HeroicKatora/git-hackme"></a></div></h3>
+		<h3>Brought by <div class="icon-github"><a href="{ repository | arg_escape }"></a></div></h3>
+		<pre>cargo install --git "{repository}"</pre>
 
 	{{ for project in projects }}
 		<div style="border-style: solid">

@@ -416,7 +416,12 @@ impl Cli {
         };
 
         let joined = self.join(&config, join)?;
-        self.checkout(joined)?;
+
+        if let Some(git) = std::env::var_os("GIT_EXEC_PATH") {
+            self.git_fixup_remote(git, joined)?;
+        } else {
+            self.git_checkout(joined)?;
+        }
 
         Ok(())
     }
@@ -504,16 +509,20 @@ impl Cli {
         })
     }
 
-    fn checkout(&self, join: Joined) -> Result<(), std::io::Error> {
+    fn git_fixup_remote(&self, git: OsString, join: Joined) -> Result<(), std::io::Error> {
+        todo!()
+    }
+
+    fn git_checkout(&self, join: Joined) -> Result<(), std::io::Error> {
         let ssh_command = format!(
             "ssh -F \"{}\"",
             join.ssh_config.display().to_string().replace('"', "\\\"")
         );
 
         let _clone = std::process::Command::new("git")
-            .arg("-c")
-            .arg(format!("core.sshCommand={ssh_command}"))
             .arg("clone")
+            .arg("--config")
+            .arg(format!("core.sshCommand={ssh_command}"))
             .arg(format!("{}:", join.mnemonic_host))
             .status()?;
 

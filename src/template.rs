@@ -102,9 +102,15 @@ impl Templates {
         struct Value<'a> {
             username: &'a str,
             projects: &'a [Project],
+            repository: &'a str,
         }
 
-        let value = Value { username, projects };
+        let value = Value {
+            username,
+            projects,
+            repository: env!("CARGO_PKG_REPOSITORY"),
+        };
+
         self.tiny.render(Self::TEMPLATE_INDEX, &value).unwrap()
     }
 

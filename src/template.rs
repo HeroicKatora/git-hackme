@@ -13,7 +13,6 @@ pub struct Project {
 
 impl Templates {
     const TEMPLATE_AUTH: &'static str = "ssh-authorized_keys";
-    const TEMPLATE_SSH_CONFIG: &'static str = "ssh-config";
     const TEMPLATE_KEY_CONFIG: &'static str = "key-config";
     const TEMPLATE_INDEX: &'static str = "index-html";
 
@@ -23,12 +22,6 @@ impl Templates {
         tiny.add_template(
             Self::TEMPLATE_AUTH,
             include_str!("../template/autorized_keys").trim_end(),
-        )
-        .unwrap();
-
-        tiny.add_template(
-            Self::TEMPLATE_SSH_CONFIG,
-            include_str!("../template/ssh_config").trim_end(),
         )
         .unwrap();
 
@@ -74,36 +67,23 @@ impl Templates {
         self.tiny.render(Self::TEMPLATE_AUTH, &value).unwrap()
     }
 
-    pub fn ssh_config(&self, basedir: &Path) -> String {
-        #[derive(serde::Serialize)]
-        struct Value<'a> {
-            basedir: &'a Path,
-        }
-
-        let value = Value { basedir };
-        self.tiny.render(Self::TEMPLATE_SSH_CONFIG, &value).unwrap()
-    }
-
-    pub fn key_ssh_config(&self, url: &url::Url, mnemonic: &str) -> String {
-        use crate::cli::Cli;
-
+    pub fn key_ssh_config(&self, runtime: &Path, url: &url::Url, mnemonic: &str) -> String {
         #[derive(serde::Serialize)]
         struct Value<'a> {
             mnemonic: &'a str,
             host: &'a str,
             user: &'a str,
-            runtime_var: &'a str,
+            runtime: &'a Path,
         }
 
         let host = url.host_str().unwrap();
         let user = url.username();
-        let runtime_var = format!("${{{}}}", Cli::VAR_RUNTIME);
 
         let value = Value {
             mnemonic,
             host,
             user,
-            runtime_var: &runtime_var,
+            runtime,
         };
 
         self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()

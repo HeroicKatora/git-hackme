@@ -4,4 +4,4 @@ Host {mnemonic}.hackme.local
   IdentityAgent none
   CheckHostIP no
   UpdateHostKeys no
-  IdentityFile "{runtime_var}/.join/{mnemonic}/key"
+  IdentityFile "{runtime | arg_escape }/.join/{mnemonic}/key"

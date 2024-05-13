@@ -33,6 +33,12 @@ pub struct LocalInterface {
     pub masked_addr: IpAddr,
 }
 
+#[must_use]
+struct Joined {
+    pub mnemonic_host: String,
+    pub ssh_config: PathBuf,
+}
+
 impl Cli {
     pub fn new(config: &Configuration) -> Result<Self, Error> {
         let mut args = std::env::args_os();
@@ -58,7 +64,7 @@ impl Cli {
                 join_http = None;
                 action = Self::action_start;
             }
-            [Some("join"), Some(url)] => {
+            [Some("clone"), Some(url)] => {
                 create_key_for = None;
                 let from_url: url::Url = url.parse().unwrap();
 
@@ -68,7 +74,7 @@ impl Cli {
                 );
 
                 join_http = Some(from_url);
-                action = Self::action_join;
+                action = Self::action_clone;
             }
             _ => Self::exit_fail(&binary, arguments),
         };
@@ -376,11 +382,7 @@ impl Cli {
     }
 
     pub fn act(&self, config: &Configuration) -> Result<(), std::io::Error> {
-        if let Some(fn_) = self.action {
-            fn_(self, config)
-        } else {
-            Ok(())
-        }
+        (self.action)(self, config)
     }
 
     fn action_check_init(&self, config: &Configuration) -> Result<(), std::io::Error> {
@@ -406,12 +408,13 @@ impl Cli {
         Ok(())
     }
 
-    fn action_join(&self, config: &Configuration) -> Result<(), std::io::Error> {
-        if let Some(join) = self.join_url() {
-            self.find_include_or_warn(&config)?;
-            self.find_env_or_warn(&config)?;
-            self.join(&config, join)?;
-        }
+    fn action_clone(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        let Some(join) = self.join_url() else {
+            return Ok(());
+        };
+
+        let joined = self.join(&config, join)?;
+        self.checkout(joined)?;
 
         Ok(())
     }
@@ -440,7 +443,7 @@ impl Cli {
             .map_or(false, |response| response.status() == 200)
     }
 
-    pub fn join(&self, config: &Configuration, url: &url::Url) -> Result<(), Error> {
+    fn join(&self, config: &Configuration, url: &url::Url) -> Result<Joined, Error> {
         let dirs = &config.base;
 
         let Some(segments) = url.path_segments() else {
@@ -455,11 +458,6 @@ impl Cli {
 
         let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
         let basedir = basedir.unwrap();
-
-        // FIXME: duplicate code that may diverge.
-        let ssh_config_file = config.base.config_local_dir().join("ssh_config");
-        let ssh_config = self.templates.ssh_config(&basedir);
-        std::fs::write(ssh_config_file, ssh_config)?;
 
         let joindir = basedir.join(format!(".join/{horse_battery}"));
         std::fs::create_dir_all(&joindir)?;
@@ -492,13 +490,34 @@ impl Cli {
             std::io::copy(&mut reader, &mut writer)?;
         }
 
-        let key_config = self.templates.key_ssh_config(url, horse_battery);
-        std::fs::write(joindir.join("ssh_config"), key_config)?;
+        let mnemonic_host = format!("{horse_battery}.hackme.local");
+        let ssh_config = joindir.join("ssh_config");
+
+        let key_config = self.templates.key_ssh_config(&basedir, url, horse_battery);
+        std::fs::write(&ssh_config, key_config)?;
+
+        Ok(Joined {
+            mnemonic_host,
+            ssh_config,
+        })
+    }
+
+    fn checkout(&self, join: Joined) -> Result<(), std::io::Error> {
+        let ssh_command = format!(
+            "ssh -F \"{}\"",
+            join.ssh_config.display().to_string().replace('"', "\\\"")
+        );
+
+        let _clone = std::process::Command::new("git")
+            .arg("-c")
+            .arg(format!("core.sshCommand={ssh_command}"))
+            .arg("clone")
+            .arg(format!("{}:", join.mnemonic_host))
+            .status()?;
 
         Ok(())
     }
 
-    pub const VAR_RUNTIME: &'static str = "GIT_HACKME_RUNTIME_DIR";
     pub const VAR_PROJECT: &'static str = "GIT_HACKME_PROJECT";
 
     pub fn find_ca_or_warn(
@@ -540,84 +559,12 @@ impl Cli {
         Ok(())
     }
 
-    pub fn find_include_or_warn(&self, dirs: &Configuration) -> Result<(), Error> {
-        let Some(config) = Self::find_ssh_config(dirs) else {
-            return Ok(());
-        };
-
-        let ssh_config_file = dirs.base.config_local_dir().join("ssh_config");
-        let expected_line = match Self::include_line(dirs, &ssh_config_file) {
-            Ok(path) => {
-                let arg = path.display().to_string().replace('\"', "\\\"");
-                format!("Include \"~/{}\"", arg)
-            }
-            Err(path) => {
-                let arg = path.display().to_string().replace('\"', "\\\"");
-                format!("Include \"{}\"", arg)
-            }
-        };
-
-        if let Ok(file) = fs::File::open(&config) {
-            let file = std::io::BufReader::new(file);
-            for line in std::io::BufRead::lines(file) {
-                if line? == expected_line {
-                    return Ok(());
-                }
-            }
-        }
-
-        eprintln!("Your ssh config does not include the dynamically provided identities.");
-        eprintln!("Insert:");
-        eprintln!("{expected_line}");
-        eprintln!("in your authorized_keys file `{}`", config.display());
-
-        Ok(())
-    }
-
-    pub fn find_env_or_warn(&self, dirs: &Configuration) -> Result<(), Error> {
-        let Some(runtime) = dirs.base.runtime_dir() else {
-            return Ok(());
-        };
-
-        let expected_line = std::ffi::OsString::from(&runtime);
-        let real_env = std::env::var_os(Self::VAR_RUNTIME);
-
-        if real_env == Some(expected_line) {
-            return Ok(());
-        }
-
-        eprintln!("Your environment config does not specify the expected runtime directory");
-        // We print this so one can source this command!
-        println!("export {}={}", Self::VAR_RUNTIME, runtime.display());
-
-        Ok(())
-    }
-
-    fn include_line<'lt>(dirs: &'lt Configuration, file: &'lt Path) -> Result<PathBuf, &'lt Path> {
-        fn strip_home(dirs: &Configuration, file: &Path) -> Option<PathBuf> {
-            let home = dirs.user.as_ref()?.home_dir();
-            let relative = file.strip_prefix(home).ok()?;
-            Some(relative.to_path_buf())
-        }
-
-        strip_home(dirs, file).ok_or(file)
-    }
-
     fn find_authorized_keys(dirs: &Configuration) -> Vec<PathBuf> {
         if let Some(user) = &dirs.user {
             // FIXME: Inspect `/etc/ssh/sshd_config` for `AuthorizedKeysFile`.
             vec![user.home_dir().join(".ssh/authorized_keys")]
         } else {
             vec![]
-        }
-    }
-
-    fn find_ssh_config(dirs: &Configuration) -> Option<PathBuf> {
-        if let Some(user) = &dirs.user {
-            // FIXME: Inspect `/etc/ssh/sshd_config` etc.
-            Some(user.home_dir().join(".ssh/config"))
-        } else {
-            None
         }
     }
 }

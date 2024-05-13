@@ -134,13 +134,13 @@ impl Cli {
     }
 
     fn exit_help(bin: &PathBuf) -> ! {
-        eprintln!("Usage: {} [init | shell]", bin.display());
+        eprintln!("Usage: {} [init | share | clone | shell]", bin.display());
         std::process::exit(0)
     }
 
     fn exit_fail(bin: &PathBuf, _arguments: Vec<OsString>) -> ! {
         eprintln!("Did not understand you there");
-        eprintln!("Usage: {} [init | shell]", bin.display());
+        eprintln!("Usage: {} [init | share | clone | shell]", bin.display());
         std::process::exit(1)
     }
 

@@ -59,7 +59,7 @@ impl Cli {
                 join_http = None;
                 action = Self::action_check_init;
             }
-            [Some("start")] => {
+            [Some("share")] => {
                 create_key_for = Some(std::env::current_dir()?);
                 join_http = None;
                 action = Self::action_start;
@@ -316,9 +316,11 @@ impl Cli {
         }
 
         let index = self.templates.index(config.username(), &projects);
+        let style = self.templates.style(Self::LOGO_GITHUB);
 
         std::fs::create_dir_all(basedir)?;
         std::fs::write(basedir.join("index.html"), index)?;
+        std::fs::write(basedir.join("style.css"), style)?;
 
         let interfaces = netdev::get_interfaces();
         let mut likely_if: Vec<_> = interfaces
@@ -519,6 +521,8 @@ impl Cli {
     }
 
     pub const VAR_PROJECT: &'static str = "GIT_HACKME_PROJECT";
+    pub const LOGO_GITHUB: &'static str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/template/Github-03.svg"));
 
     pub fn find_ca_or_warn(
         &self,

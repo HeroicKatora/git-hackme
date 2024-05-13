@@ -1,0 +1,15 @@
+.icon-github \{
+	background-image: url({ logo_github | base64_document });
+	background-size: contain;
+	background-position: center;
+	background-repeat: no-repeat;
+	display: inline-block;
+	height: 2em;
+	width: 2em;
+	vertical-align: middle;
+}
+
+.icon-github > a \{
+	height: 100%;
+	display: block;
+}

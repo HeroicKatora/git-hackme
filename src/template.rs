@@ -14,7 +14,8 @@ pub struct Project {
 impl Templates {
     const TEMPLATE_AUTH: &'static str = "ssh-authorized_keys";
     const TEMPLATE_KEY_CONFIG: &'static str = "key-config";
-    const TEMPLATE_INDEX: &'static str = "index-html";
+    const TEMPLATE_INDEX: &'static str = "html-index";
+    const TEMPLATE_STYLE: &'static str = "html-style-css";
 
     pub fn load() -> Self {
         let mut tiny = TinyTemplate::new();
@@ -37,7 +38,14 @@ impl Templates {
         )
         .unwrap();
 
+        tiny.add_template(
+            Self::TEMPLATE_STYLE,
+            include_str!("../template/style.css").trim_end(),
+        )
+        .unwrap();
+
         tiny.add_formatter("arg_escape", Self::arg_escape);
+        tiny.add_formatter("base64_document", Self::arg_base64_url);
 
         Templates { tiny }
     }
@@ -100,6 +108,16 @@ impl Templates {
         self.tiny.render(Self::TEMPLATE_INDEX, &value).unwrap()
     }
 
+    pub fn style(&self, logo_github: &str) -> String {
+        #[derive(serde::Serialize)]
+        struct Value<'a> {
+            logo_github: &'a str,
+        }
+
+        let value = Value { logo_github };
+        self.tiny.render(Self::TEMPLATE_STYLE, &value).unwrap()
+    }
+
     fn arg_escape(val: &Value, into: &mut String) -> Result<(), Error> {
         let Value::String(st) = val else {
             return Err(Error::GenericError {
@@ -108,6 +126,20 @@ impl Templates {
         };
 
         into.push_str(&st.replace('\"', "\\\""));
+        Ok(())
+    }
+
+    fn arg_base64_url(val: &Value, into: &mut String) -> Result<(), Error> {
+        let Value::String(st) = val else {
+            return Err(Error::GenericError {
+                msg: "can only format strings".into(),
+            });
+        };
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let formatable = base64::display::Base64Display::new(st.as_bytes(), &engine);
+        into.push_str(&format_args!("data:image/svg+xml;base64,{}", formatable).to_string());
+
         Ok(())
     }
 }

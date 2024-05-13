@@ -1,4 +1,5 @@
 <head>
+	<link rel="stylesheet" type="text/css" href="style.css"/>
 	<script>
 		/* FIXME: so many escapes, this should come from a separate file */
 		const project_list = [
@@ -12,19 +13,21 @@
 
 		window.onload = () => \{
 			for (let mn of project_list) \{
-				document.getElementById(`cmd-join-$\{mn}`).innerText = `git-hackme join "$\{domain}/$\{mn}"`;
+				document.getElementById(`cmd-join-$\{mn}`).innerText = `git-hackme clone "$\{domain}/$\{mn}"`;
 			}
 		};
 	</script>
 </head>
 <html>
 	<main>
-		Project List
+		<h1>Hackable Projects</h1>
+
+		<h3>Brought by <div class="icon-github"><a href="https://github.com/HeroicKatora/git-hackme"></a></div></h3>
+
 	{{ for project in projects }}
-		<div>
+		<div style="border-style: solid">
 			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
 			<p><pre id=cmd-join-{project.mnemonic}>Join command requires Js</pre></p>
-			<p><pre id=cmd-clone-{project.mnemonic}>git clone { project.mnemonic }.hackme.local:</pre></p>
 		</div>
 	{{ endfor }}
 	</main>

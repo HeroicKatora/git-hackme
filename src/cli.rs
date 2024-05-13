@@ -76,6 +76,18 @@ impl Cli {
                 join_http = Some(from_url);
                 action = Self::action_clone;
             }
+            [Some("restore"), Some(url)] => {
+                create_key_for = None;
+                let from_url: url::Url = url.parse().unwrap();
+
+                assert!(
+                    ["http", "https"].contains(&from_url.scheme()),
+                    "Unhandled protocol to join"
+                );
+
+                join_http = Some(from_url);
+                action = Self::action_restore;
+            }
             _ => Self::exit_fail(&binary, arguments),
         };
 
@@ -415,13 +427,27 @@ impl Cli {
             return Ok(());
         };
 
-        let joined = self.join(&config, join)?;
-
-        if let Some(git) = std::env::var_os("GIT_EXEC_PATH") {
-            self.git_fixup_remote(git, joined)?;
+        if std::env::var_os("GIT_EXEC_PATH").is_some() {
+            panic!("Use subcommand `git hackme restore` to modify any existing repository");
         } else {
+            let joined = self.join(&config, join)?;
             self.git_checkout(joined)?;
         }
+
+        Ok(())
+    }
+
+    fn action_restore(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        let Some(join) = self.join_url() else {
+            return Ok(());
+        };
+
+        let Some(git) = std::env::var_os("GIT_EXEC_PATH") else {
+            panic!("Use subcommand `git hackme clone` to clone a fresh repository. (Not running in a git repository).");
+        };
+
+        let joined = self.join(&config, join)?;
+        self.git_fixup_remote(git, joined)?;
 
         Ok(())
     }
@@ -509,15 +535,53 @@ impl Cli {
         })
     }
 
-    fn git_fixup_remote(&self, git: OsString, join: Joined) -> Result<(), std::io::Error> {
-        todo!()
+    fn git_fixup_remote(&self, _: OsString, join: Joined) -> Result<(), std::io::Error> {
+        fn is_hackme_host(out: std::process::Output) -> bool {
+            out.status.success()
+                && std::str::from_utf8(&out.stdout)
+                    .map_or(false, |st| st.trim_end().ends_with(".hackme.local:"))
+        }
+
+        let ssh_command = join.ssh_command_as_git_config();
+        let get_remote = std::process::Command::new("git")
+            .args(["remote", "get-url", "origin"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output();
+
+        eprintln!("{get_remote:?}");
+        if !get_remote.map_or(false, is_hackme_host) {
+            eprintln!("git config core.sshCommand {ssh_command}");
+            panic!("Command must be ran in an older Hackme project but its origin URL is not a bare hackme.local domain");
+        }
+
+        let set_remote = std::process::Command::new("git")
+            .args(["remote", "set-url", "origin"])
+            .arg(format!("{}:", join.mnemonic_host))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        let set_config = std::process::Command::new("git")
+            .args(["config", "core.sshCommand"])
+            .arg(ssh_command)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        let (set_remote, set_config) = (set_remote?, set_config?);
+        // FIXME: bad error handling..
+        assert!(set_remote.success());
+        assert!(set_config.success());
+
+        Ok(())
     }
 
     fn git_checkout(&self, join: Joined) -> Result<(), std::io::Error> {
-        let ssh_command = format!(
-            "ssh -F \"{}\"",
-            join.ssh_config.display().to_string().replace('"', "\\\"")
-        );
+        let ssh_command = join.ssh_command_as_git_config();
 
         let _clone = std::process::Command::new("git")
             .arg("clone")
@@ -530,8 +594,10 @@ impl Cli {
     }
 
     pub const VAR_PROJECT: &'static str = "GIT_HACKME_PROJECT";
-    pub const LOGO_GITHUB: &'static str =
-        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/template/Github-03.svg"));
+    pub const LOGO_GITHUB: &'static str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/template/Github-03.svg"
+    ));
 
     pub fn find_ca_or_warn(
         &self,
@@ -579,5 +645,14 @@ impl Cli {
         } else {
             vec![]
         }
+    }
+}
+
+impl Joined {
+    fn ssh_command_as_git_config(&self) -> String {
+        format!(
+            "ssh -F \"{}\"",
+            self.ssh_config.display().to_string().replace('"', "\\\"")
+        )
     }
 }

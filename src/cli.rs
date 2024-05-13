@@ -22,7 +22,7 @@ pub struct Cli {
     action: ActionFn,
 }
 
-type ActionFn = Option<fn(&Cli, &Configuration) -> Result<(), std::io::Error>>;
+type ActionFn = fn(&Cli, &Configuration) -> Result<(), std::io::Error>;
 
 pub struct GitShellWrapper {
     pub canonical: PathBuf,
@@ -43,7 +43,7 @@ impl Cli {
 
         let create_key_for;
         let join_http;
-        let mut action: ActionFn = None;
+        let action: ActionFn;
 
         match args_str[..] {
             [] | [Some("--help")] => Self::exit_help(&binary),
@@ -51,11 +51,12 @@ impl Cli {
             [Some("init")] => {
                 create_key_for = None;
                 join_http = None;
-                action = Some(Self::action_check_init);
+                action = Self::action_check_init;
             }
             [Some("start")] => {
                 create_key_for = Some(std::env::current_dir()?);
                 join_http = None;
+                action = Self::action_start;
             }
             [Some("join"), Some(url)] => {
                 create_key_for = None;
@@ -67,6 +68,7 @@ impl Cli {
                 );
 
                 join_http = Some(from_url);
+                action = Self::action_join;
             }
             _ => Self::exit_fail(&binary, arguments),
         };
@@ -382,7 +384,36 @@ impl Cli {
     }
 
     fn action_check_init(&self, config: &Configuration) -> Result<(), std::io::Error> {
-        self.recreate_index(&config, None)
+        let options = config.options()?;
+        let ca = self.create_ca(options, config.identity_file())?;
+        self.find_ca_or_warn(&config, &ca)?;
+        self.recreate_index(&config, None)?;
+
+        Ok(())
+    }
+
+    fn action_start(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        let options = config.options()?;
+        let ca = self.create_ca(options, config.identity_file())?;
+
+        if let Some(_path) = self.create_key_for() {
+            let signed = self.generate_and_sign_key(&config.base, options, &ca)?;
+            let mnemonic = signed.mnemonic(options)?;
+            eprintln!("Generated new keyfile in {}", signed.path.display());
+            self.recreate_index(&config, Some(&mnemonic))?;
+        }
+
+        Ok(())
+    }
+
+    fn action_join(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        if let Some(join) = self.join_url() {
+            self.find_include_or_warn(&config)?;
+            self.find_env_or_warn(&config)?;
+            self.join(&config, join)?;
+        }
+
+        Ok(())
     }
 
     fn detect_python() -> bool {

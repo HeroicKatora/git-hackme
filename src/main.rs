@@ -21,10 +21,7 @@ fn _do() -> Result<(), std::io::Error> {
     let ca = cli.create_ca(options, config.identity_file())?;
 
     cli.find_ca_or_warn(&config, &ca)?;
-
-    if cli.create_key_for().is_none() && cli.join_url().is_none() {
-        cli.recreate_index(&config, None)?;
-    }
+    cli.act(&config)?;
 
     if let Some(_path) = cli.create_key_for() {
         let signed = cli.generate_and_sign_key(&config.base, options, &ca)?;

@@ -5,6 +5,13 @@ from your current local network via a public SSH certificate. It intended use
 case are maker meetup events where someone's project is worked on by a trusted
 group which do not have or need access to the authoritative code repository.
 
+## Known Problems
+
+- `join` requires setting up a certificate authority..
+- Cloning with a configured core.sshCommand is a less fickle experience than
+  messing with any of the .ssh/config. It's not persistent but the other isn't
+  when the hostname changes either.
+
 ## Quick start
 
 ```

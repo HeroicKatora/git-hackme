@@ -19,7 +19,10 @@ pub struct Cli {
     templates: template::Templates,
     create_key_for: Option<PathBuf>,
     join_http: Option<url::Url>,
+    action: ActionFn,
 }
+
+type ActionFn = Option<fn(&Cli, &Configuration) -> Result<(), std::io::Error>>;
 
 pub struct GitShellWrapper {
     pub canonical: PathBuf,
@@ -40,6 +43,7 @@ impl Cli {
 
         let create_key_for;
         let join_http;
+        let mut action: ActionFn = None;
 
         match args_str[..] {
             [] | [Some("--help")] => Self::exit_help(&binary),
@@ -47,6 +51,7 @@ impl Cli {
             [Some("init")] => {
                 create_key_for = None;
                 join_http = None;
+                action = Some(Self::action_check_init);
             }
             [Some("start")] => {
                 create_key_for = Some(std::env::current_dir()?);
@@ -116,6 +121,7 @@ impl Cli {
             templates,
             create_key_for,
             join_http,
+            action,
         })
     }
 
@@ -193,7 +199,7 @@ impl Cli {
                         "-p",
                         "TemporaryFileSystem=/",
                         "-p",
-                        &format!("BindPaths={}:{}", original_dir.display(), src_dir.display())
+                        &format!("BindPaths={}:{}", original_dir.display(), src_dir.display()),
                     ])
                     .arg("git-shell")
                     .arg("-c")
@@ -365,6 +371,18 @@ impl Cli {
         }
 
         Ok(())
+    }
+
+    pub fn act(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        if let Some(fn_) = self.action {
+            fn_(self, config)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn action_check_init(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        self.recreate_index(&config, None)
     }
 
     fn detect_python() -> bool {

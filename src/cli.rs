@@ -1,13 +1,13 @@
 use core::net::{IpAddr, SocketAddr};
 use std::{ffi::OsString, fs, io::Error, path::Path, path::PathBuf};
 
+#[cfg(target_family = "unix")]
+use crate::configuration::{Isolate, SignedEphemeralKey};
+#[cfg(target_family = "unix")]
 use std::os::unix::{fs::OpenOptionsExt as _, process::CommandExt as _};
 
-use crate::configuration::Isolate;
 use crate::{
-    configuration::{
-        CertificateAuthority, Configuration, IdentityFile, Options, SignedEphemeralKey,
-    },
+    configuration::{CertificateAuthority, Configuration, IdentityFile, Options},
     template,
 };
 
@@ -116,6 +116,7 @@ impl Cli {
             },
         };
 
+        #[cfg(target_family = "unix")]
         let interfaces = netdev::get_interfaces()
             .into_iter()
             .flat_map(|intf| {
@@ -135,6 +136,8 @@ impl Cli {
                     .collect::<Vec<_>>()
             })
             .collect();
+        #[cfg(not(target_family = "unix"))]
+        let interfaces = vec![];
 
         Ok(Cli {
             binary,
@@ -185,6 +188,12 @@ impl Cli {
         std::process::exit(1)
     }
 
+    #[cfg(not(target_family = "unix"))]
+    fn exec_shell(config: &Configuration) -> Error {
+        panic!("Only target_family = unix supports git-shell and hosting")
+    }
+
+    #[cfg(target_family = "unix")]
     fn exec_shell(config: &Configuration) -> Error {
         let cmd = std::env::var_os("SSH_ORIGINAL_COMMAND").unwrap();
         let mnemonic = std::env::var_os(Cli::VAR_PROJECT).unwrap();
@@ -280,7 +289,11 @@ impl Cli {
         id.into_ca(opt)
     }
 
-    pub fn generate_and_sign_key(
+    /// We need symlinking, critically important for our security structure. That is in unsharing
+    /// projects and the jail we rely on a specific folder structure for each subproject. This must
+    /// be realized with a symbolic link. Be careful when providing an alternative.
+    #[cfg(target_family = "unix")]
+    fn generate_and_sign_key(
         &self,
         dirs: &ProjectDirs,
         options: &Options,
@@ -363,6 +376,16 @@ impl Cli {
         std::fs::write(basedir.join("index.html"), index)?;
         std::fs::write(basedir.join("style.css"), style)?;
 
+        self.recommend_netdev(basedir, find_project)
+    }
+
+    #[cfg(not(target_family = "unix"))]
+    fn recommend_netdev(&self, _: &Path, _: Option<&str>) -> Result<(), Error> {
+        Ok(())
+    }
+
+    #[cfg(target_family = "unix")]
+    fn recommend_netdev(&self, basedir: &Path, find_project: Option<&str>) -> Result<(), Error> {
         let interfaces = netdev::get_interfaces();
         let mut likely_if: Vec<_> = interfaces
             .into_iter()
@@ -437,6 +460,7 @@ impl Cli {
         Ok(())
     }
 
+    #[cfg(target_family = "unix")]
     fn action_start(&self, config: &Configuration) -> Result<(), std::io::Error> {
         let options = config.options()?;
         let ca = self.create_ca(options, config.identity_file())?;
@@ -449,6 +473,11 @@ impl Cli {
         }
 
         Ok(())
+    }
+
+    #[cfg(not(target_family = "unix"))]
+    fn action_start(&self, _: &Configuration) -> Result<(), std::io::Error> {
+        panic!("Only target_family = unix supports git-shell and hosting")
     }
 
     fn action_clone(&self, config: &Configuration) -> Result<(), std::io::Error> {

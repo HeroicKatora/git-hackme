@@ -10,6 +10,9 @@ group which do not have or need access to the authoritative code repository.
 - [ ] Does not support the Windows target, even for contributors. I have no
   clue how to programmatically write a key with proper permissions and
   configure its use. Maybe just WSL the problem away.
+- [ ] The `unshare` command is not yet implement, delete the mnemonic directory
+  in the runtime directory as a workaround. (Slightly problematic, does not
+  validate against reuse of that mnemonic).
 
 ## Quick start for sharing
 

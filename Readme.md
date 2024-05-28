@@ -7,28 +7,40 @@ group which do not have or need access to the authoritative code repository.
 
 ## Known Problems
 
-- [x] `join` requires setting up a certificate authority..
-- [x] Cloning with a configured core.sshCommand is a less fickle experience
-  than messing with any of the .ssh/config. It's not persistent but the other
-  isn't when the hostname changes either.
+- [ ] Does not support the Windows target, even for contributors. I have no
+  clue how to programmatically write a key with proper permissions and
+  configure its use. Maybe just WSL the problem away.
 
-## Quick start
+## Quick start for sharing
 
 ```
 cargo install --git https://github.com/HeroicKatora/git-hackme
-git-hackme init
+git hackme init
 
 # Assuming you're in a git repository:
 git hackme start
 ```
 
 Then spin up a web server such as `python -m http.server` to the indicated path
-and see its instructions for joining.
+and see its instructions for joining. Use `init` anytime to regenerate the HTML
+index page etc.
 
-## 
+## Quick start for contributing
+
+See the web page (`/index.html`) shared by a hosting person. Boils down to
+something similar as:
+
+```
+# Only once and for updates:
+cargo install --git https://github.com/HeroicKatora/git-hackme
+
+git hackme clone "http://andreas@192.168.0.1:8000//flip-fix-blade-fantasy"
+```
+
+## Requirements
 
 You need:
 
 - Linux
-- The `ssh-keygen` utility and `openssh`
-- 
+- The `ssh-keygen` utility and `openssh` in general
+- `git` obviously

@@ -14,6 +14,8 @@ group which do not have or need access to the authoritative code repository.
   scheme should remain readable when text is selected since this is the most
   basic workflow. There should be a 'Copy' button.
 
+- [ ] The index page should copy repository descriptions and names.
+
 - [ ] Does not support the Windows target, even for contributors. I have no
   clue how to programmatically write a key with proper permissions and
   configure its use. Maybe just WSL the problem away.

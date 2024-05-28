@@ -31,7 +31,7 @@ cargo install --git https://github.com/HeroicKatora/git-hackme
 git hackme init
 
 # Assuming you're in a git repository:
-git hackme start
+git hackme share
 ```
 
 Then spin up a web server such as `python -m http.server` to the indicated path

@@ -7,9 +7,17 @@ group which do not have or need access to the authoritative code repository.
 
 ## Known Problems
 
+- [ ] The share command should check if SSH is running and reachable, not only
+  an HTTP server. This can detect if the CA is changed or the sshd daemon down.
+
+- [ ] The index page should get better UX optimized for sharing. The color
+  scheme should remain readable when text is selected since this is the most
+  basic workflow. There should be a 'Copy' button.
+
 - [ ] Does not support the Windows target, even for contributors. I have no
   clue how to programmatically write a key with proper permissions and
   configure its use. Maybe just WSL the problem away.
+
 - [ ] The `unshare` command is not yet implement, delete the mnemonic directory
   in the runtime directory as a workaround. (Slightly problematic, does not
   validate against reuse of that mnemonic).

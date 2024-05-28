@@ -5,7 +5,7 @@ from your current local network via a public SSH certificate. It intended use
 case are maker meetup events where someone's project is worked on by a trusted
 group which do not have or need access to the authoritative code repository.
 
-## Known Problems
+## Known Problems (beta.2)
 
 - [ ] The share command should check if SSH is running and reachable, not only
   an HTTP server. This can detect if the CA is changed or the sshd daemon down.
@@ -14,7 +14,7 @@ group which do not have or need access to the authoritative code repository.
   scheme should remain readable when text is selected since this is the most
   basic workflow. There should be a 'Copy' button.
 
-- [ ] The shell doesn't diagnose a missing directory. If the remote deletes or
+- [x] The shell doesn't diagnose a missing directory. If the remote deletes or
   unshares the repository it should nudge you towards the `reset` command.
 
 - [ ] The index page should copy repository descriptions and names.

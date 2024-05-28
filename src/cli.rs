@@ -205,7 +205,22 @@ impl Cli {
 
         let src_dir = basedir.join(&mnemonic).join(&mnemonic);
         // As promised this should be a link.
-        let original_dir = src_dir.read_link().unwrap();
+        let original_dir = match src_dir.read_link() {
+            Ok(repository) => repository,
+            Err(io) if io.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("The project you're trying to access existed on the person's machine you're connecting to, but can no longer be found.");
+
+                eprintln!("To resolve this issue, try:");
+                eprintln!("");
+                eprintln!(
+                    "    1. Ask around, and use `git hackme restore` with a new project URL."
+                );
+                eprintln!("");
+                eprintln!("Closing the SSH connection now, see you.");
+                std::process::exit(1);
+            }
+            Err(other) => Err(other).unwrap(),
+        };
 
         /* What does not work for isolation:
         *

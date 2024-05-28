@@ -1,7 +1,13 @@
 use base64::{engine::general_purpose::STANDARD_NO_PAD as B64_STANDARD, Engine as _};
 use bip39_lexical_data::WL_BIP39;
 use directories::{ProjectDirs, UserDirs};
-use std::{fs, io::Error, path::PathBuf, sync::OnceLock};
+
+use std::{
+    fs,
+    io::Error,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use crate::{
     cli::{Cli, GitShellWrapper, LocalInterface},
@@ -13,6 +19,12 @@ pub struct Configuration {
     pub user: Option<UserDirs>,
     options: OnceLock<Options>,
     username: OnceLock<String>,
+    tempdir: OnceLock<Result<RuntimeDirectory, Error>>,
+}
+
+enum RuntimeDirectory {
+    AppDir(PathBuf),
+    Tempdir(PathBuf),
 }
 
 #[derive(serde::Deserialize)]
@@ -20,13 +32,13 @@ pub struct Options {
     /// The `ssh-keygen` program or wrapper to invoke.
     #[serde(default = "Options::default_keygen")]
     pub ssh_keygen: Vec<PathBuf>,
-    pub isolate: Option<Isolate>
+    pub isolate: Option<Isolate>,
 }
 
 #[derive(serde::Deserialize)]
 pub enum Isolate {
     #[serde(rename = "systemd-run")]
-    SystemdRun
+    SystemdRun,
 }
 
 pub struct IdentityFile {
@@ -61,6 +73,7 @@ impl Configuration {
             user: UserDirs::new(),
             options: OnceLock::new(),
             username: OnceLock::new(),
+            tempdir: OnceLock::new(),
         }))
     }
 
@@ -78,6 +91,26 @@ impl Configuration {
         let file = fs::File::open(file)?;
         let options: Options = serde_json::de::from_reader(file)?;
         Ok(self.options.get_or_init(|| options))
+    }
+
+    pub fn runtime_dir(&self) -> Result<&Path, &std::io::Error> {
+        let result = self.tempdir.get_or_init(|| {
+            self.base
+                .runtime_dir()
+                .ok_or_else(|| self.base.state_dir())
+                .map_or_else(
+                    |_err| {
+                        let dir = std::env::temp_dir().join(env!("CARGO_PKG_NAME"));
+                        std::fs::create_dir_all(&dir)?;
+                        Ok(RuntimeDirectory::Tempdir(dir))
+                    },
+                    |appdir| Ok(RuntimeDirectory::AppDir(appdir.to_path_buf())),
+                )
+        });
+
+        result.as_ref().map(|v| match v {
+            RuntimeDirectory::AppDir(dir) | RuntimeDirectory::Tempdir(dir) => dir.as_path(),
+        })
     }
 
     pub fn username(&self) -> &str {

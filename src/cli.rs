@@ -11,8 +11,6 @@ use crate::{
     template,
 };
 
-use directories::ProjectDirs;
-
 pub struct Cli {
     binary: GitShellWrapper,
     interfaces: Vec<LocalInterface>,
@@ -200,9 +198,10 @@ impl Cli {
 
         let options = config.options().unwrap();
 
-        let dirs = &config.base;
-        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
-        let basedir = basedir.unwrap();
+        let basedir = config
+            .runtime_dir()
+            .map_err(Self::runtime_dir_error)
+            .unwrap();
 
         let src_dir = basedir.join(&mnemonic).join(&mnemonic);
         // As promised this should be a link.
@@ -295,13 +294,11 @@ impl Cli {
     #[cfg(target_family = "unix")]
     fn generate_and_sign_key(
         &self,
-        dirs: &ProjectDirs,
+        config: &Configuration,
         options: &Options,
         ca: &CertificateAuthority,
     ) -> Result<SignedEphemeralKey, Error> {
-        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
-        let basedir = basedir.unwrap();
-
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
         std::fs::create_dir_all(basedir)?;
 
         let path = basedir.join(".ssh-new-ephemeral");
@@ -338,14 +335,7 @@ impl Cli {
         config: &Configuration,
         find_project: Option<&str>,
     ) -> Result<(), Error> {
-        let dirs = &config.base;
-        // FIXME: duplicate code to access this directory, should be cached and unified in
-        // `Configuration` with proper error handling if we can not find a base directory. Some
-        // code might also rely on the automatic cleanup we can do here? Or should we perform one
-        // manually when key signatures get invalidated?
-        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
-        let basedir = basedir.unwrap();
-
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
         std::fs::create_dir_all(basedir)?;
 
         let mut projects = vec![];
@@ -466,7 +456,7 @@ impl Cli {
         let ca = self.create_ca(options, config.identity_file())?;
 
         if let Some(_path) = self.create_key_for() {
-            let signed = self.generate_and_sign_key(&config.base, options, &ca)?;
+            let signed = self.generate_and_sign_key(config, options, &ca)?;
             let mnemonic = signed.mnemonic(options)?;
             eprintln!("Generated new keyfile in {}", signed.path.display());
             self.recreate_index(&config, Some(&mnemonic))?;
@@ -545,9 +535,12 @@ impl Cli {
         Ok(git_prefix.success())
     }
 
-    fn join(&self, config: &Configuration, url: &url::Url) -> Result<Joined, Error> {
-        let dirs = &config.base;
+    fn runtime_dir_error(err: &std::io::Error) -> std::io::Error {
+        let kind = err.kind();
+        std::io::Error::new(kind, err.to_string())
+    }
 
+    fn join(&self, config: &Configuration, url: &url::Url) -> Result<Joined, Error> {
         let Some(segments) = url.path_segments() else {
             panic!("Trying to join cannot-be-base URL, should be caught earlier");
         };
@@ -558,9 +551,7 @@ impl Cli {
 
         assert!(horse_battery.chars().all(|ch| ch.is_ascii_graphic()));
 
-        let basedir = dirs.runtime_dir().ok_or_else(|| dirs.state_dir());
-        let basedir = basedir.unwrap();
-
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
         let joindir = basedir.join(format!(".join/{horse_battery}"));
         std::fs::create_dir_all(&joindir)?;
 

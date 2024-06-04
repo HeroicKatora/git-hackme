@@ -5,7 +5,7 @@ from your current local network via a public SSH certificate. It intended use
 case are maker meetup events where someone's project is worked on by a trusted
 group which do not have or need access to the authoritative code repository.
 
-## Known Problems (beta.2)
+## Known Problems (beta.4)
 
 - [ ] The share command should check if SSH is running and reachable, not only
   an HTTP server. This can detect if the CA is changed or the sshd daemon down.
@@ -23,7 +23,7 @@ group which do not have or need access to the authoritative code repository.
   clue how to programmatically write a key with proper permissions and
   configure its use. Maybe just WSL the problem away.
 
-- [ ] The `unshare` command is not yet implement, delete the mnemonic directory
+- [x] The `unshare` command is not yet implement, delete the mnemonic directory
   in the runtime directory as a workaround. (Slightly problematic, does not
   validate against reuse of that mnemonic).
 

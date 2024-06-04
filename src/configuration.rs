@@ -101,7 +101,6 @@ impl Configuration {
                 .map_or_else(
                     |_err| {
                         let dir = std::env::temp_dir().join(env!("CARGO_PKG_NAME"));
-                        std::fs::create_dir_all(&dir)?;
                         Ok(RuntimeDirectory::Tempdir(dir))
                     },
                     |appdir| Ok(RuntimeDirectory::AppDir(appdir.to_path_buf())),

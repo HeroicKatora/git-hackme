@@ -1,4 +1,5 @@
 use core::net::{IpAddr, SocketAddr};
+use std::collections::HashSet;
 use std::{ffi::OsString, fs, io::Error, path::Path, path::PathBuf};
 
 #[cfg(target_family = "unix")]
@@ -15,7 +16,7 @@ pub struct Cli {
     binary: GitShellWrapper,
     interfaces: Vec<LocalInterface>,
     templates: template::Templates,
-    create_key_for: Option<PathBuf>,
+    target_repository: Option<PathBuf>,
     join_http: Option<url::Url>,
     action: ActionFn,
 }
@@ -45,7 +46,7 @@ impl Cli {
         let arguments: Vec<_> = args.collect();
         let args_str: Vec<_> = arguments.iter().map(|os| os.to_str()).collect();
 
-        let create_key_for;
+        let target_repository;
         let join_http;
         let action: ActionFn;
 
@@ -53,17 +54,22 @@ impl Cli {
             [] | [Some("--help")] => Self::exit_help(&binary, &[]),
             [Some("shell")] => return Err(Self::exec_shell(config)),
             [Some("init")] => {
-                create_key_for = None;
+                target_repository = None;
                 join_http = None;
                 action = Self::action_check_init;
             }
             [Some("share")] => {
-                create_key_for = Some(std::env::current_dir()?);
+                target_repository = Some(std::env::current_dir()?);
                 join_http = None;
-                action = Self::action_start;
+                action = Self::action_share;
+            }
+            [Some("unshare")] => {
+                target_repository = Some(std::env::current_dir()?);
+                join_http = None;
+                action = Self::action_unshare;
             }
             [Some("clone"), Some(url)] => {
-                create_key_for = None;
+                target_repository = None;
                 let from_url: url::Url = url.parse().unwrap();
 
                 assert!(
@@ -75,7 +81,7 @@ impl Cli {
                 action = Self::action_clone;
             }
             [Some("restore"), Some(url)] => {
-                create_key_for = None;
+                target_repository = None;
                 let from_url: url::Url = url.parse().unwrap();
 
                 assert!(
@@ -134,6 +140,7 @@ impl Cli {
                     .collect::<Vec<_>>()
             })
             .collect();
+
         #[cfg(not(target_family = "unix"))]
         let interfaces = vec![];
 
@@ -141,7 +148,7 @@ impl Cli {
             binary,
             interfaces,
             templates,
-            create_key_for,
+            target_repository,
             join_http,
             action,
         })
@@ -282,10 +289,6 @@ impl Cli {
         }
     }
 
-    pub fn create_key_for(&self) -> Option<&Path> {
-        self.create_key_for.as_deref()
-    }
-
     pub fn join_url(&self) -> Option<&url::Url> {
         self.join_http.as_ref()
     }
@@ -319,6 +322,12 @@ impl Cli {
         let path = basedir.join(".ssh-new-ephemeral");
         if path.try_exists()? {
             std::fs::remove_file(&path)?;
+        }
+
+        if self.interfaces.is_empty() {
+            eprintln!("Couldn't determine any interface to share the project to.");
+            eprintln!("Hint: the key is always restricted to your current networks.");
+            return Err(std::io::ErrorKind::Other)?;
         }
 
         let temporary = ca.create_key(&self.binary, &self.interfaces, options, path)?;
@@ -359,18 +368,16 @@ impl Cli {
                 continue;
             };
 
-            let entry_name = project.file_name();
-            // Find out if this may be a valid entry by inspecting the name. It should be generated
-            // according to our mnemonic file name patterns.
-            let Some(name) = entry_name.to_str() else {
+            let Some(mnemonic) = Self::is_project_candidate(&project) else {
                 continue;
             };
 
-            if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-                continue;
-            }
+            let suspect = basedir.join(&mnemonic).join(&mnemonic);
 
-            let mnemonic = name.to_owned();
+            let Ok(true) = suspect.try_exists() else {
+                continue;
+            };
+
             projects.push(template::Project { mnemonic });
         }
 
@@ -382,6 +389,22 @@ impl Cli {
         std::fs::write(basedir.join("style.css"), style)?;
 
         self.recommend_netdev(basedir, find_project)
+    }
+
+    fn is_project_candidate(entry: &std::fs::DirEntry) -> Option<String> {
+        let entry_name = entry.file_name();
+
+        // Find out if this may be a valid entry by inspecting the name. It should be generated
+        // according to our mnemonic file name patterns.
+        let Some(name) = entry_name.to_str() else {
+            return None;
+        };
+
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return None;
+        }
+
+        Some(name.to_owned())
     }
 
     #[cfg(not(target_family = "unix"))]
@@ -416,6 +439,7 @@ impl Cli {
         // Most likely should be last so we min-sort on this.
         likely_if.sort_by_key(|(intf, _)| (intf.default, intf.transmit_speed));
         let Some((_, most_likely_addr)) = likely_if.last() else {
+            eprintln!("Couldn't determine any interface to share the project to");
             return Ok(());
         };
 
@@ -466,11 +490,11 @@ impl Cli {
     }
 
     #[cfg(target_family = "unix")]
-    fn action_start(&self, config: &Configuration) -> Result<(), std::io::Error> {
+    fn action_share(&self, config: &Configuration) -> Result<(), std::io::Error> {
         let options = config.options()?;
         let ca = self.create_ca(options, config.identity_file())?;
 
-        if let Some(_path) = self.create_key_for() {
+        if let Some(_path) = self.target_repository.as_deref() {
             let signed = self.generate_and_sign_key(config, options, &ca)?;
             let mnemonic = signed.mnemonic(options)?;
             eprintln!("Generated new keyfile in {}", signed.path.display());
@@ -482,6 +506,106 @@ impl Cli {
 
     #[cfg(not(target_family = "unix"))]
     fn action_start(&self, _: &Configuration) -> Result<(), std::io::Error> {
+        panic!("Only target_family = unix supports git-shell and hosting")
+    }
+
+    #[cfg(target_family = "unix")]
+    fn action_unshare(&self, config: &Configuration) -> Result<(), std::io::Error> {
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
+
+        let shared = match basedir.read_dir() {
+            Err(io) if io.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            other => other?,
+        };
+
+        let targets: HashSet<_> = self
+            .target_repository
+            .iter()
+            .map(|path| path.canonicalize())
+            .collect::<Result<_, _>>()?;
+
+        let mut count = 0;
+        let mut total = 0;
+
+        for entry in shared {
+            // Here we consider each file or other entry within the runtime directory. The usual
+            // layout by the tool creates one directory for each shared project, with its name
+            // based on the mnemonic that's chosen. Such directory then contains an (absolute)
+            // symlink to the project directory. Anything else is not a shared project. We unshare
+            // a project by simply removing the symlink. But first we validate that the entry setup
+            // is very similar to what we created.
+            let Ok(entry) = entry else {
+                continue;
+            };
+
+            let Some(mnemonic) = Self::is_project_candidate(&entry) else {
+                continue;
+            };
+
+            let suspect = basedir.join(&mnemonic).join(&mnemonic);
+
+            total += 1;
+
+            let project = match suspect
+                .clone()
+                .read_link()
+                .and_then(|path| path.canonicalize())
+            {
+                Ok(project) if targets.contains(&project) => suspect,
+                Ok(_other) => continue,
+                Err(io) if io.kind() == std::io::ErrorKind::NotFound => {
+                    // Already unshared, most likely. Definitely no longer reachable with our ssh
+                    // jail which always requires it to exist first (before dispatching into the
+                    // git shell itself).
+                    continue;
+                }
+                Err(io) => {
+                    eprintln!(
+                        "Skipping the check of entry {} due to {io:?}",
+                        suspect.display()
+                    );
+
+                    continue;
+                }
+            };
+
+            if !project.is_symlink() {
+                eprintln!(
+                    "Skipping the check of entry {} which is not a symlink (weird)",
+                    project.display()
+                );
+
+                continue;
+            }
+
+            if let Err(io) = std::fs::remove_file(&project) {
+                eprintln!(
+                    "Failed to remove match link {} due to {io:?}",
+                    project.display()
+                );
+
+                continue;
+            }
+
+            // All done.
+            count += 1;
+        }
+
+        match count {
+            0 => eprintln!("Did not find any remaining shares of the project ({total} candidates)"),
+            1 => eprintln!("Removed one share of the project"),
+            n => eprintln!("Removed {n} shares of the project"),
+        }
+
+        if count > 0 {
+            self.recreate_index(config, None)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(target_family = "unix"))]
+    fn action_unshare(&self, _: &Configuration) -> Result<(), std::io::Error> {
         panic!("Only target_family = unix supports git-shell and hosting")
     }
 

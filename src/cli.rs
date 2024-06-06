@@ -219,9 +219,9 @@ impl Cli {
 
                 eprintln!("To resolve this issue, try:");
                 eprintln!("");
-                eprintln!(
-                    "    1. Ask around, and use `git hackme restore` with a new project URL."
-                );
+                eprintln!("    1. Ask around for a new project URL.");
+                eprintln!("    2. If you have a repository already, use `git hackme restore` in it with a new project URL.");
+                eprintln!("    3. Otherwise `git hackme clone` the new project URL.");
                 eprintln!("");
                 eprintln!("Closing the SSH connection now, see you.");
                 std::process::exit(1);

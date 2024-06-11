@@ -1,5 +1,14 @@
+<!DOCTYPE html>
+<html>
 <head>
 	<link rel="stylesheet" type="text/css" href="style.css"/>
+	<template id="spa_main_script">
+		<div>
+			{ spa_script | format_unescaped }
+		</div>
+	</template>
+</head>
+<body>
 	<script>
 		/* FIXME: so many escapes, this should come from a separate file */
 		const project_list = [
@@ -8,17 +17,19 @@
 			{{ endfor }}
 		];
 
-		let domain = new URL(window.location);
-		domain.username = "{ username | arg_escape }";
+		const project_username = "{ username | arg_escape }";
+		const script_element = document.getElementById('spa_main_script');
+		const main_script = script_element.content.firstElementChild.innerText;
 
-		window.onload = () => \{
-			for (let mn of project_list) \{
-				document.getElementById(`cmd-join-$\{mn}`).innerText = `git-hackme clone "$\{domain}/$\{mn}"`;
-			}
-		};
+		let blob = new Blob([main_script], \{ type: 'application/javascript' });
+		(async function() \{
+			const blobURL = URL.createObjectURL(blob);
+			const stage2 = (await import(blobURL));
+			console.log(stage2);
+
+			stage2.init_window(project_list, project_username);
+		})();
 	</script>
-</head>
-<html>
 	<main>
 		<h1>Hackable Projects</h1>
 
@@ -28,8 +39,12 @@
 	{{ for project in projects }}
 		<div style="border-style: solid">
 			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
-			<p><pre id=cmd-join-{project.mnemonic}>Join command requires Js</pre></p>
+			<div class="git-hackme-project-join-link">
+				<pre class="git-hackme-project-join-pre" id=cmd-join-{project.mnemonic}>Join command requires Js</pre>
+				<button class="git-hackme-project-join-button" >Copy</button>
+			</div>
 		</div>
 	{{ endfor }}
 	</main>
+</body>
 </html>

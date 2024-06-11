@@ -46,6 +46,7 @@ impl Templates {
 
         tiny.add_formatter("arg_escape", Self::arg_escape);
         tiny.add_formatter("base64_document", Self::arg_base64_url);
+        tiny.add_formatter("format_unescaped", tinytemplate::format_unescaped);
 
         Templates { tiny }
     }
@@ -103,12 +104,14 @@ impl Templates {
             username: &'a str,
             projects: &'a [Project],
             repository: &'a str,
+            spa_script: &'a str,
         }
 
         let value = Value {
             username,
             projects,
             repository: env!("CARGO_PKG_REPOSITORY"),
+            spa_script: include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/template/index.js")),
         };
 
         self.tiny.render(Self::TEMPLATE_INDEX, &value).unwrap()

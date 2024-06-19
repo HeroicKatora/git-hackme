@@ -13,3 +13,7 @@
 	height: 100%;
 	display: block;
 }
+
+.git-hackme-project-join-link > pre,button \{
+	display: inline;
+}

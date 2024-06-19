@@ -35,16 +35,16 @@
 
 		<h3>Brought by <div class="icon-github"><a href="{ repository | arg_escape }"></a></div></h3>
 		<pre>cargo install --git "{repository}"</pre>
-
 	{{ for project in projects }}
 		<div style="border-style: solid">
 			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
 			<div class="git-hackme-project-join-link">
 				<pre class="git-hackme-project-join-pre" id=cmd-join-{project.mnemonic}>Join command requires Js</pre>
-				<button class="git-hackme-project-join-button" >Copy</button>
+				<button class="git-hackme-project-join-button" >Copy to clipboard</button>
 			</div>
 		</div>
 	{{ endfor }}
+
 	</main>
 </body>
 </html>

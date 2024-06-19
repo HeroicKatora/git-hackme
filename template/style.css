@@ -1,3 +1,7 @@
+:root \{
+  color-scheme: light dark;
+}
+
 .icon-github \{
 	background-image: url({ logo_github | base64_document });
 	background-size: contain;
@@ -12,6 +16,11 @@
 .icon-github > a \{
 	height: 100%;
 	display: block;
+}
+
+.git-hackme-project-join-link > pre::selection \{
+	background: light-dark(lightgray, gray);
+	color: light-dark(black, white);
 }
 
 .git-hackme-project-join-link > pre,button \{

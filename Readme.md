@@ -5,35 +5,27 @@ from your current local network via a public SSH certificate. It intended use
 case are maker meetup events where someone's project is worked on by a trusted
 group which do not have or need access to the authoritative code repository.
 
-## Known Problems (beta.4)
+## Quick start for contributing
 
-- [ ] The share command should check if SSH is running and reachable, not only
-  an HTTP server. This can detect if the CA is changed or the sshd daemon down.
+See the web page shared by a hosting person. Boils down to something similar
+to the commands:
 
-- [ ] The index page should get better UX optimized for sharing. The color
-  scheme should remain readable when text is selected since this is the most
-  basic workflow. There should be a 'Copy' button.
+```
+# Only once and for updates:
+cargo install git-hackme
 
-- [x] The shell doesn't diagnose a missing directory. If the remote deletes or
-  unshares the repository it should nudge you towards the `reset` command.
-
-- [ ] The index page should copy repository descriptions and names.
-
-- [ ] Does not support the Windows target, even for contributors. I have no
-  clue how to programmatically write a key with proper permissions and
-  configure its use. Maybe just WSL the problem away.
-
-- [x] The `unshare` command is not yet implement, delete the mnemonic directory
-  in the runtime directory as a workaround. (Slightly problematic, does not
-  validate against reuse of that mnemonic).
+# Adjust as listed on the hosting person's web page:
+git hackme clone "http://aurelia@192.168.0.1:8000/flip-fix-blade-fantasy"
+```
 
 ## Quick start for sharing
 
 ```
-cargo install --git https://github.com/HeroicKatora/git-hackme
+# Only once and for updates:
+cargo install git-hackme
 git hackme init
 
-# Assuming you're in a git repository:
+# Then, assuming you're in a git repository:
 git hackme share
 ```
 
@@ -41,22 +33,36 @@ Then spin up a web server such as `python -m http.server` to the indicated path
 and see its instructions for joining. Use `init` anytime to regenerate the HTML
 index page etc.
 
-## Quick start for contributing
+## Known and Fixed Problems (beta.5)
 
-See the web page (`/index.html`) shared by a hosting person. Boils down to
-something similar as:
+- [ ] The share command should check if SSH is running and reachable, not only
+  an HTTP server. This can detect if the CA is changed or the sshd daemon down.
 
-```
-# Only once and for updates:
-cargo install --git https://github.com/HeroicKatora/git-hackme
+- [ ] The index page should copy repository descriptions and names.
 
-git hackme clone "http://andreas@192.168.0.1:8000//flip-fix-blade-fantasy"
-```
+- [x] The index page should get better UX optimized for sharing. The color
+  scheme should remain readable when text is selected since this is the most
+  basic workflow. There should be a 'Copy' button.
+
+- [x] The shell doesn't diagnose a missing directory. If the remote deletes or
+  unshares the repository it should nudge you towards the `reset` command.
+
+- [x] Does not support OS-X.
+
+- [x] The `unshare` command is not yet implement, delete the mnemonic directory
+  in the runtime directory as a workaround. (Slightly problematic, does not
+  validate against reuse of that mnemonic).
+
+## Unsupported Problems (please contribute)
+
+- [ ] Does not support the Windows target, even for contributors. I have no
+  clue how to programmatically write a key with proper permissions and
+  configure its use. Maybe just WSL the problem away.
 
 ## Requirements
 
 You need:
 
-- Linux
-- The `ssh-keygen` utility and `openssh` in general
-- `git` obviously
+- Linux or OS X
+- `openssh` and `ssh-keygen`
+- `git`

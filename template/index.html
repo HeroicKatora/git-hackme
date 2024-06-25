@@ -33,8 +33,12 @@
 	<main>
 		<h1 id="git-hackme-global-title">Hackable Projects</h1>
 
-		<h3>Brought by <div class="icon-github"><a href="{ repository | arg_escape }"></a></div></h3>
-		<pre>cargo install --git "{repository}"</pre>
+		<h3 style="display: inline">
+			Brought by <div class="icon-github">
+				<a href="{ repository | arg_escape }"></a>
+			</div>
+		</h3>
+		<pre style="display: inline; padding-left: 1em">cargo install "{pkg_name}@{version}"</pre>
 	{{ for project in projects }}
 		<div class="git-hackme-project" id="git-hackme-project-{project.mnemonic}" style="border-style: solid">
 			<a class="git-hackme-title" href="./{ project.mnemonic }">{ project.mnemonic }</a>

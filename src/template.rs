@@ -106,16 +106,22 @@ impl Templates {
     pub fn index(&self, username: &str, projects: &[Project]) -> String {
         #[derive(serde::Serialize)]
         struct Value<'a> {
+            repository: &'a str,
+            pkg_name: &'a str,
+            version: &'a str,
+
             username: &'a str,
             projects: &'a [Project],
-            repository: &'a str,
             spa_script: &'a str,
         }
 
         let value = Value {
+            repository: env!("CARGO_PKG_REPOSITORY"),
+            pkg_name: env!("CARGO_PKG_NAME"),
+            version: env!("CARGO_PKG_VERSION"),
+
             username,
             projects,
-            repository: env!("CARGO_PKG_REPOSITORY"),
             spa_script: include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/template/index.js")),
         };
 

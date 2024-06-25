@@ -12,7 +12,7 @@ to the commands:
 
 ```
 # Only once and for updates:
-cargo install git-hackme
+cargo install git-hackme@1.0.0-beta.6
 
 # Adjust as listed on the hosting person's web page:
 git hackme clone "http://aurelia@192.168.0.1:8000/flip-fix-blade-fantasy"
@@ -22,7 +22,7 @@ git hackme clone "http://aurelia@192.168.0.1:8000/flip-fix-blade-fantasy"
 
 ```
 # Only once and for updates:
-cargo install git-hackme
+cargo install git-hackme@1.0.0-beta.6
 git hackme init
 
 # Then, assuming you're in a git repository:
@@ -38,7 +38,7 @@ index page etc.
 - [ ] The share command should check if SSH is running and reachable, not only
   an HTTP server. This can detect if the CA is changed or the sshd daemon down.
 
-- [ ] The index page should copy repository descriptions and names.
+- [x] The index page should copy repository ~~descriptions and~~ names.
 
 - [x] The index page should get better UX optimized for sharing. The color
   scheme should remain readable when text is selected since this is the most

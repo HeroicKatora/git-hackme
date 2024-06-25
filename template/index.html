@@ -11,11 +11,11 @@
 <body>
 	<script>
 		/* FIXME: so many escapes, this should come from a separate file */
-		const project_list = [
+		const project_list = \{
 			{{ for project in projects }}
-				"{ project.mnemonic }",
+				["{ project.mnemonic }"]: { project.description | format_json },
 			{{ endfor }}
-		];
+		};
 
 		const project_username = "{ username | arg_escape }";
 		const script_element = document.getElementById('spa_main_script');
@@ -36,8 +36,8 @@
 		<h3>Brought by <div class="icon-github"><a href="{ repository | arg_escape }"></a></div></h3>
 		<pre>cargo install --git "{repository}"</pre>
 	{{ for project in projects }}
-		<div style="border-style: solid">
-			<a href="./{ project.mnemonic }">{ project.mnemonic }</a>
+		<div class="git-hackme-project" id="git-hackme-project-{project.mnemonic}" style="border-style: solid">
+			<a class="git-hackme-title" href="./{ project.mnemonic }">{ project.mnemonic }</a>
 			<div class="git-hackme-project-join-link">
 				<pre class="git-hackme-project-join-pre" id=cmd-join-{project.mnemonic}>Join command requires Js</pre>
 				<button class="git-hackme-project-join-button" >Copy to clipboard</button>

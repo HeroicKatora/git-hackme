@@ -1,9 +1,8 @@
-const init_window = function (project_list, project_username) {
+const init_window = function (project_items, project_username) {
 	let domain = new URL(window.location);
 	domain.username = project_username;
 
 	for (let item of document.getElementsByClassName('git-hackme-project-join-link')) {
-		console.log(item);
 		const preText = item.getElementsByClassName('git-hackme-project-join-pre')[0];
 		const buttonText = item.getElementsByClassName('git-hackme-project-join-button')[0];
 
@@ -13,8 +12,17 @@ const init_window = function (project_list, project_username) {
 	}
 
 	window.onload = () => {
-		for (let mn of project_list) {
-			document.getElementById(`cmd-join-${mn}`).innerText = `git-hackme clone "${domain}/${mn}"`;
+		for (let mn in project_list) {
+			let description = project_list[mn];
+
+			let project = document.getElementById(`git-hackme-project-${mn}`);
+			let project_join = document.getElementById(`cmd-join-${mn}`);
+			let title = project.querySelector('.git-hackme-title');
+
+			project_join.innerText = `git-hackme clone "${domain}/${mn}"`;
+			if (description.name) {
+				title.innerText = `${description.name} (${mn})`;
+			}
 		}
 	};
 };

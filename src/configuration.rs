@@ -60,6 +60,8 @@ pub enum CertificateAuthorityType {
 pub struct SignedEphemeralKey {
     /// Path to the private key, as specified in the ssh-keygen command.
     pub path: PathBuf,
+    /// The key mnemonic for the one generated.
+    pub mnemonic: String,
 }
 
 static SINGLETON: OnceLock<Configuration> = OnceLock::new();
@@ -263,7 +265,7 @@ impl CertificateAuthority {
 
         shell_out_to_command_success(sign_key)?;
 
-        Ok(SignedEphemeralKey { path })
+        Ok(SignedEphemeralKey { path, mnemonic })
     }
 
     /// Generate the line to add to `authorized_keys`.

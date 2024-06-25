@@ -1,6 +1,9 @@
-use serde_json::Value;
 use std::path::Path;
+
+use serde_json::Value;
 use tinytemplate::{error::Error, TinyTemplate};
+
+use crate::project;
 
 pub struct Templates {
     tiny: TinyTemplate<'static>,
@@ -9,6 +12,7 @@ pub struct Templates {
 #[derive(serde::Serialize)]
 pub struct Project {
     pub mnemonic: String,
+    pub description: Option<project::Description>,
 }
 
 impl Templates {
@@ -47,6 +51,7 @@ impl Templates {
         tiny.add_formatter("arg_escape", Self::arg_escape);
         tiny.add_formatter("base64_document", Self::arg_base64_url);
         tiny.add_formatter("format_unescaped", tinytemplate::format_unescaped);
+        tiny.add_formatter("format_json", Self::format_json);
 
         Templates { tiny }
     }
@@ -135,6 +140,13 @@ impl Templates {
         };
 
         into.push_str(&st.replace('\"', "\\\""));
+        Ok(())
+    }
+
+    fn format_json(val: &Value, into: &mut String) -> Result<(), Error> {
+        let rendered = serde_json::ser::to_string(val)?;
+        into.push_str(&rendered);
+
         Ok(())
     }
 

@@ -9,7 +9,7 @@ use std::os::unix::{fs::OpenOptionsExt as _, process::CommandExt as _};
 
 use crate::{
     configuration::{CertificateAuthority, Configuration, IdentityFile, Options},
-    template,
+    project, template,
 };
 
 pub struct Cli {
@@ -315,6 +315,7 @@ impl Cli {
         config: &Configuration,
         options: &Options,
         ca: &CertificateAuthority,
+        target: &Path,
     ) -> Result<SignedEphemeralKey, Error> {
         let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
         std::fs::create_dir_all(basedir)?;
@@ -349,9 +350,9 @@ impl Cli {
         )?;
 
         // Create the project's direct link to the source repository
-        std::os::unix::fs::symlink(std::env::current_dir()?, fulldir.join(&mnemonic))?;
+        std::os::unix::fs::symlink(target, fulldir.join(&mnemonic))?;
 
-        Ok(SignedEphemeralKey { path })
+        Ok(SignedEphemeralKey { path, mnemonic })
     }
 
     pub fn recreate_index(
@@ -378,7 +379,13 @@ impl Cli {
                 continue;
             };
 
-            projects.push(template::Project { mnemonic });
+            let description = basedir.join(&mnemonic).join("project.json");
+            let description = project::Description::read(&description).ok();
+
+            projects.push(template::Project {
+                mnemonic,
+                description,
+            });
         }
 
         let index = self.templates.index(config.username(), &projects);
@@ -494,12 +501,29 @@ impl Cli {
         let options = config.options()?;
         let ca = self.create_ca(options, config.identity_file())?;
 
-        if let Some(_path) = self.target_repository.as_deref() {
-            let signed = self.generate_and_sign_key(config, options, &ca)?;
-            let mnemonic = signed.mnemonic(options)?;
+        let Some(path) = self.target_repository.as_deref() else {
+            return Ok(());
+        };
+
+        let mnemonic = if let Some(mnemonic) = self.find_shared_project(config, path)? {
+            mnemonic
+        } else {
+            let signed = self.generate_and_sign_key(config, options, &ca, path)?;
             eprintln!("Generated new keyfile in {}", signed.path.display());
-            self.recreate_index(&config, Some(&mnemonic))?;
+            let mnemonic = signed.mnemonic(options)?;
+            mnemonic
+        };
+
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
+        let project_dir = basedir.join(&mnemonic);
+
+        let description = self.describe_project(path)?;
+
+        if let Err(err) = description.write(&project_dir.join("project.json")) {
+            eprintln!("Warning: could not create project description: {err:?}");
         }
+
+        self.recreate_index(&config, Some(&mnemonic))?;
 
         Ok(())
     }
@@ -507,6 +531,56 @@ impl Cli {
     #[cfg(not(target_family = "unix"))]
     fn action_start(&self, _: &Configuration) -> Result<(), std::io::Error> {
         panic!("Only target_family = unix supports git-shell and hosting")
+    }
+
+    fn find_shared_project(
+        &self,
+        config: &Configuration,
+        target: &Path,
+    ) -> Result<Option<String>, std::io::Error> {
+        let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
+        let target = target.canonicalize()?;
+
+        let shared = match basedir.read_dir() {
+            Err(io) if io.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            other => other?,
+        };
+
+        for entry in shared {
+            let Ok(entry) = entry else {
+                continue;
+            };
+
+            let Some(mnemonic) = Self::is_project_candidate(&entry) else {
+                continue;
+            };
+
+            let suspect = basedir.join(&mnemonic).join(&mnemonic);
+
+            match suspect
+                .clone()
+                .read_link()
+                .and_then(|path| path.canonicalize())
+            {
+                Ok(project) if project == target => {
+                    return Ok(Some(mnemonic));
+                }
+                Ok(_other) => continue,
+                Err(_) => {
+                    continue;
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn describe_project(&self, path: &Path) -> Result<project::Description, std::io::Error> {
+        if path.parent().is_none() {
+            panic!("Trying to share the file root as a project, bad idea");
+        }
+
+        Ok(project::Description::from_path(path))
     }
 
     #[cfg(target_family = "unix")]

@@ -1,6 +1,8 @@
 /// All the IO and administration with the user.
 mod cli;
 mod configuration;
+/// Interact with projects, gather description etc.
+mod project;
 mod template;
 
 fn main() -> Exit {

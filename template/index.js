@@ -2,6 +2,11 @@ const init_window = function (project_items, project_username) {
 	let domain = new URL(window.location);
 	domain.username = project_username;
 
+	let title = document.getElementById('git-hackme-global-title');
+	if (title) {
+		title.innerText += ` shared at ${window.location}`;
+	}
+
 	for (let item of document.getElementsByClassName('git-hackme-project-join-link')) {
 		const preText = item.getElementsByClassName('git-hackme-project-join-pre')[0];
 		const buttonText = item.getElementsByClassName('git-hackme-project-join-button')[0];

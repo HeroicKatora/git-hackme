@@ -38,6 +38,9 @@ index page etc.
 - [ ] The share command should check if SSH is running and reachable, not only
   an HTTP server. This can detect if the CA is changed or the sshd daemon down.
 
+- [ ] The original repository name could be used as the target directory name,
+  avoid confusion when looking through previous repositories.
+
 - [x] The index page should copy repository ~~descriptions and~~ names.
 
 - [x] The index page should get better UX optimized for sharing. The color

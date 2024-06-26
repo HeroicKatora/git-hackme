@@ -51,7 +51,7 @@ impl Cli {
         let action: ActionFn;
 
         match args_str[..] {
-            [] | [Some("--help")] => Self::exit_help(&binary, &[]),
+            [] | [Some("help"), ..] | [Some("--help"), ..] => Self::exit_help(&binary, &[]),
             [Some("shell")] => return Err(Self::exec_shell(config)),
             [Some("init")] => {
                 target_repository = None;
@@ -70,7 +70,13 @@ impl Cli {
             }
             [Some("clone"), Some(url)] => {
                 target_repository = None;
-                let from_url: url::Url = url.parse().unwrap();
+                let from_url: url::Url = match url.parse() {
+                    Ok(from_url) => from_url,
+                    Err(err) => {
+                        eprintln!("Could not parse project URL: {err}");
+                        Self::exit_help(&binary, &[]);
+                    }
+                };
 
                 assert!(
                     ["http", "https"].contains(&from_url.scheme()),

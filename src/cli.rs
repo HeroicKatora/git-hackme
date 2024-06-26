@@ -80,6 +80,18 @@ impl Cli {
                 join_http = Some(from_url);
                 action = Self::action_clone;
             }
+            [Some("clone"), Some(url), _] => {
+                target_repository = Some(arguments[2].clone().into());
+                let from_url: url::Url = url.parse().unwrap();
+
+                assert!(
+                    ["http", "https"].contains(&from_url.scheme()),
+                    "Unhandled protocol to join"
+                );
+
+                join_http = Some(from_url);
+                action = Self::action_clone;
+            }
             [Some("restore"), Some(url)] => {
                 target_repository = None;
                 let from_url: url::Url = url.parse().unwrap();
@@ -158,7 +170,7 @@ impl Cli {
         match what.first().and_then(|&x| x) {
             Some("clone") => {
                 eprintln!(
-                    "Usage: {} clone HTTP_USER_AND_ADDR\n{}",
+                    "Usage: {} clone HTTP_USER_AND_ADDR [dir]\n{}",
                     bin.display(),
                     "Clone and initialize the repository via HTTP, from a remote generated with git hackme share. The exact argument can be found on the remote's HTML index page."
                 );
@@ -693,7 +705,8 @@ impl Cli {
         }
 
         let joined = self.join(&config, join)?;
-        self.git_checkout(joined)?;
+        let into = self.target_repository.as_deref();
+        self.git_checkout(joined, into)?;
 
         Ok(())
     }
@@ -852,7 +865,7 @@ impl Cli {
         Ok(())
     }
 
-    fn git_checkout(&self, join: Joined) -> Result<(), std::io::Error> {
+    fn git_checkout(&self, join: Joined, into: Option<&Path>) -> Result<(), std::io::Error> {
         let ssh_command = join.ssh_command_as_git_config();
 
         let _clone = std::process::Command::new("git")
@@ -860,6 +873,7 @@ impl Cli {
             .arg("--config")
             .arg(format!("core.sshCommand={ssh_command}"))
             .arg(format!("{}:", join.mnemonic_host))
+            .args(into)
             .status()?;
 
         Ok(())

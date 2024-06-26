@@ -24,7 +24,12 @@ const init_window = function (project_items, project_username) {
 			let project_join = document.getElementById(`cmd-join-${mn}`);
 			let title = project.querySelector('.git-hackme-title');
 
-			project_join.innerText = `git-hackme clone "${domain}/${mn}"`;
+			if (description.folder) {
+				project_join.innerText = `git hackme clone "${domain}/${mn}" ${description.folder}`;
+			} else {
+				project_join.innerText = `git hackme clone "${domain}/${mn}"`;
+			}
+
 			if (description.name) {
 				title.innerText = `${description.name} (${mn})`;
 			}

@@ -289,8 +289,23 @@ impl Cli {
                         "ReadOnlyPaths=/",
                         "-p",
                         "ProtectHome=tmpfs",
-                        // "-p",
-                        // &format!("ReadWritePaths={}", src_dir.display()),
+
+                        // Upon executing git-shell it will attempt to read from the home directory
+                        // to discover if there are any extension scripts. Failing to list the
+                        // home directory itself (or chdir'ing to it) will terminate the shell
+                        // before it even begun looking at the user command. So here we ensure it
+                        // finds a modified home that definitely does exit albeit never contains
+                        // the extension scripts. Or.. maybe we will make it contain some to
+                        // isolate any existing commands even further, provide help or w/e,
+                        // Not that ProtectHome with a `/home/`-partition in particular would not
+                        // make accessible the actual home folder by path as the whole partition is
+                        // replaced and empty, missing the user's directory. In comparison, a
+                        // separate home partition for a user would work fine. Eh.
+                        "-p",
+                        "SetLoginEnvironment=no",
+                        "-E",
+                        &format!("HOME={}", basedir.display()),
+
                         "-p",
                         "ProtectSystem=strict",
                         "-p",
@@ -413,7 +428,16 @@ impl Cli {
         std::fs::write(basedir.join("index.html"), index)?;
         std::fs::write(basedir.join("style.css"), style)?;
 
-        self.recommend_netdev(basedir, find_project)
+        self.recommend_netdev(basedir, find_project)?;
+        if let Some(find_project) = find_project {
+            self.recommend_ssh(config, find_project)?;
+        } else if let Some(project) = projects.last() {
+            self.recommend_ssh(config, &project.mnemonic)?;
+        } else {
+            eprintln!("Couldn't determine any project to attempt. Skipping SSH check");
+        }
+
+        Ok(())
     }
 
     fn is_project_candidate(entry: &std::fs::DirEntry) -> Option<String> {
@@ -464,7 +488,10 @@ impl Cli {
         // Most likely should be last so we min-sort on this.
         likely_if.sort_by_key(|(intf, _)| (intf.default, intf.transmit_speed));
         let Some((_, most_likely_addr)) = likely_if.last() else {
-            eprintln!("Couldn't determine any interface to share the project to");
+            eprintln!(
+                "Couldn't determine a public interface for contributors. Skipping server check"
+            );
+
             return Ok(());
         };
 
@@ -496,6 +523,52 @@ impl Cli {
         for (intf, network) in likely_if {
             let name = intf.friendly_name.as_ref().unwrap_or(&intf.name);
             eprintln!("if {} at {}", name, network.addr());
+        }
+
+        Ok(())
+    }
+
+    fn recommend_ssh(&self, config: &Configuration, find_project: &str) -> Result<(), Error> {
+        // FIXME: pass the URL from netdev, if any available.
+        // FIXME: why pre-suppose this port to be 8000?
+        let target: url::Url = format!(
+            "http://{user}@localhost:8000/{project}",
+            user = config.username(),
+            project = find_project
+        )
+        .parse()
+        .unwrap();
+
+        let joined = self.join(config, &target)?;
+        // FIXME: hm.. we don't check if that is a git-shell
+        let output = std::process::Command::new("ssh")
+            .stderr(std::process::Stdio::piped())
+            .arg("-F")
+            .arg(&joined.ssh_config)
+            .arg(&joined.mnemonic_host)
+            .arg("help")
+            .output()?;
+
+        if !output.status.success() {
+            let diagnosis = if {
+                std::str::from_utf8(&output.stderr)
+                    .map_or(false, |st| st.contains("Connection refused"))
+            } {
+                Some("Your SSH server is not reachable at port 22")
+            } else {
+                None
+            };
+
+            let output = String::from_utf8_lossy(&output.stderr);
+            let output = output.trim();
+
+            if let Some(diagnosis) = diagnosis {
+                eprintln!("SSH Connectivity failed. Stderr:\n{output}");
+                eprintln!("");
+                eprintln!("Potential problem cause: {diagnosis}");
+            } else {
+                eprintln!("SSH Connectivity failed. Stderr:\n{output}");
+            }
         }
 
         Ok(())

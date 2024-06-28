@@ -1,0 +1,48 @@
+name: Continuous integration
+on:
+  push:
+    branches: master
+    tags:
+      - "v*"
+  pull_request:
+    branches: master
+
+jobs:
+  check:
+    name: Check Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all --check
+      - run: rustup component add clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets --workspace -- -D warnings
+
+  check_osx:
+    name: Check Linux
+    runs-on: macosx-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-targets

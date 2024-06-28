@@ -1,4 +1,4 @@
-Git Hackme is intended for spontaneous collaboration with `mob`.
+Git Hackme is intended for spontaneous collaboration with `mob`¹.
 
 It will turn a local repository into an collaboration server, allowing login
 from your current local network via a public SSH certificate. It intended use
@@ -33,9 +33,15 @@ Then spin up a web server such as `python -m http.server` to the indicated path
 and see its instructions for joining. Use `init` anytime to regenerate the HTML
 index page etc.
 
+¹Note that the `mob` program creates a temporary branch, derived from the main
+branch of which it is created. This effectively mitigates an issue with sharing
+a local repository, which is that one can not pushed to a branch checked-out in
+a non-bare git remote. One simply has to ensure that `mob stop` is ran by the
+hosting person.
+
 ## Known and Fixed Problems (beta.5)
 
-- [ ] The share command should check if SSH is running and reachable, not only
+- [x] The share command should check if SSH is running and reachable, not only
   an HTTP server. This can detect if the CA is changed or the sshd daemon down.
 
 - [x] The original repository name could be used as the target directory name,

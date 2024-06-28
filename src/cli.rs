@@ -289,7 +289,6 @@ impl Cli {
                         "ReadOnlyPaths=/",
                         "-p",
                         "ProtectHome=tmpfs",
-
                         // Upon executing git-shell it will attempt to read from the home directory
                         // to discover if there are any extension scripts. Failing to list the
                         // home directory itself (or chdir'ing to it) will terminate the shell
@@ -305,7 +304,6 @@ impl Cli {
                         "SetLoginEnvironment=no",
                         "-E",
                         &format!("HOME={}", basedir.display()),
-
                         "-p",
                         "ProtectSystem=strict",
                         "-p",
@@ -430,9 +428,9 @@ impl Cli {
 
         self.recommend_netdev(basedir, find_project)?;
         if let Some(find_project) = find_project {
-            self.recommend_ssh(config, find_project)?;
+            self.recommend_ssh(config, basedir, find_project)?;
         } else if let Some(project) = projects.last() {
-            self.recommend_ssh(config, &project.mnemonic)?;
+            self.recommend_ssh(config, basedir, &project.mnemonic)?;
         } else {
             eprintln!("Couldn't determine any project to attempt. Skipping SSH check");
         }
@@ -528,7 +526,31 @@ impl Cli {
         Ok(())
     }
 
-    fn recommend_ssh(&self, config: &Configuration, find_project: &str) -> Result<(), Error> {
+    /// Here we check SSH, but *as if* you had already downloaded the planned configuration from
+    /// the recommended HTTP server; or from localhost if we don't have a recommender for HTTP for
+    /// some reason. This is a smoke test for a disabled SSH server.
+    fn recommend_ssh(
+        &self,
+        config: &Configuration,
+        basedir: &Path,
+        find_project: &str,
+    ) -> Result<(), Error> {
+        pub struct Tempdir(PathBuf);
+
+        impl Drop for Tempdir {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let recommender = basedir.join(".ssh-test");
+        std::fs::create_dir_all(&recommender)?;
+        let into = recommender.join("clone");
+        let _ = std::fs::remove_dir_all(&into);
+        let into = Tempdir(into);
+
+        let ssh_config = recommender.join("ssh_config");
+
         // FIXME: pass the URL from netdev, if any available.
         // FIXME: why pre-suppose this port to be 8000?
         let target: url::Url = format!(
@@ -539,25 +561,22 @@ impl Cli {
         .parse()
         .unwrap();
 
-        let joined = self.join(config, &target)?;
-        // FIXME: hm.. we don't check if that is a git-shell
-        let output = std::process::Command::new("ssh")
-            .stderr(std::process::Stdio::piped())
-            .arg("-F")
-            .arg(&joined.ssh_config)
-            .arg(&joined.mnemonic_host)
-            .arg("help")
-            .output()?;
+        let joined = self.join_finalize(basedir, find_project, ssh_config.clone(), &target)?;
+        let output = self.git_checkout(joined, Some(into.0.as_path()))?;
 
         if !output.status.success() {
-            let diagnosis = if {
+            let (diagnosis, recommendations): (Option<_>, &[&'static str]);
+
+            if {
                 std::str::from_utf8(&output.stderr)
                     .map_or(false, |st| st.contains("Connection refused"))
             } {
-                Some("Your SSH server is not reachable at port 22")
+                diagnosis = Some("Your SSH server is not reachable at port 22");
+                recommendations = &["sudo systemctl start sshd"];
             } else {
-                None
-            };
+                diagnosis = None;
+                recommendations = &[];
+            }
 
             let output = String::from_utf8_lossy(&output.stderr);
             let output = output.trim();
@@ -565,10 +584,26 @@ impl Cli {
             if let Some(diagnosis) = diagnosis {
                 eprintln!("SSH Connectivity failed. Stderr:\n{output}");
                 eprintln!("");
-                eprintln!("Potential problem cause: {diagnosis}");
+                eprintln!(
+                    "Potential problem cause: {diagnosis}{maybe_try_something}",
+                    maybe_try_something = if recommendations.is_empty() {
+                        ""
+                    } else {
+                        ". Try:"
+                    }
+                );
+                for rec in recommendations {
+                    eprintln!("  {rec}");
+                }
             } else {
                 eprintln!("SSH Connectivity failed. Stderr:\n{output}");
+                eprintln!("");
+                eprintln!(
+                    "This might be a bug. Please report it, consider contributing diagnostics."
+                );
             }
+        } else {
+            eprintln!("SSH ready for connection at {target}");
         }
 
         Ok(())
@@ -857,7 +892,8 @@ impl Cli {
         assert!(horse_battery.chars().all(|ch| ch.is_ascii_graphic()));
 
         let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
-        let joindir = basedir.join(format!(".join/{horse_battery}"));
+        let joinbase = basedir.join(".join");
+        let joindir = joinbase.join(&horse_battery);
         std::fs::create_dir_all(&joindir)?;
 
         #[deprecated = "Network errors from ureq should not panic!"]
@@ -888,10 +924,25 @@ impl Cli {
             std::io::copy(&mut reader, &mut writer)?;
         }
 
-        let mnemonic_host = format!("{horse_battery}.hackme.local");
         let ssh_config = joindir.join("ssh_config");
+        self.join_finalize(&joinbase, horse_battery, ssh_config, url)
+    }
 
-        let key_config = self.templates.key_ssh_config(&basedir, url, horse_battery);
+    fn join_finalize(
+        &self,
+        // The dir where relevant connections are listed by their mnemonic.
+        joindir: &Path,
+        // The mnemonic of the project we to configure a connect for.
+        horse_battery: &str,
+        // The path to store the SSH configuration file.
+        ssh_config: PathBuf,
+        // The URL to configure with SSH, which must follow our scheme to be recognized in later
+        // invocations such as `restore` etc (and as it will appear in the configuration file).
+        url: &url::Url,
+    ) -> Result<Joined, Error> {
+        let mnemonic_host = format!("{horse_battery}.hackme.local");
+
+        let key_config = self.templates.key_ssh_config(joindir, url, &horse_battery);
         std::fs::write(&ssh_config, key_config)?;
 
         Ok(Joined {
@@ -944,18 +995,22 @@ impl Cli {
         Ok(())
     }
 
-    fn git_checkout(&self, join: Joined, into: Option<&Path>) -> Result<(), std::io::Error> {
+    fn git_checkout(
+        &self,
+        join: Joined,
+        into: Option<&Path>,
+    ) -> Result<std::process::Output, std::io::Error> {
         let ssh_command = join.ssh_command_as_git_config();
 
-        let _clone = std::process::Command::new("git")
+        let output = std::process::Command::new("git")
             .arg("clone")
             .arg("--config")
             .arg(format!("core.sshCommand={ssh_command}"))
             .arg(format!("{}:", join.mnemonic_host))
             .args(into)
-            .status()?;
+            .output()?;
 
-        Ok(())
+        Ok(output)
     }
 
     pub const VAR_PROJECT: &'static str = "GIT_HACKME_PROJECT";

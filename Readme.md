@@ -12,7 +12,7 @@ to the commands:
 
 ```
 # Only once and for updates:
-cargo install git-hackme@1.0.0-beta.7
+cargo install git-hackme@1.0.0-beta.8
 
 # Adjust as listed on the hosting person's web page:
 git hackme clone "http://aurelia@192.168.0.1:8000/flip-fix-blade-fantasy"
@@ -22,7 +22,7 @@ git hackme clone "http://aurelia@192.168.0.1:8000/flip-fix-blade-fantasy"
 
 ```
 # Only once and for updates:
-cargo install git-hackme@1.0.0-beta.7
+cargo install git-hackme@1.0.0-beta.8
 git hackme init
 
 # Then, assuming you're in a git repository:
@@ -39,7 +39,7 @@ a local repository, which is that one can not pushed to a branch checked-out in
 a non-bare git remote. One simply has to ensure that `mob stop` is ran by the
 hosting person.
 
-## Known and Fixed Problems (beta.7)
+## Known and Fixed Problems (beta.8)
 
 - [ ] Sharing an existing project does not *always* update the mnemonic folder.
   This is an optimization but might cause the key file to be out-of-date or its

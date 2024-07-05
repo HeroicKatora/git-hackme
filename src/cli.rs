@@ -324,7 +324,7 @@ impl Cli {
         self.join_http.as_ref()
     }
 
-    pub fn create_ca(
+    pub fn get_or_create_ca(
         &self,
         opt: &Options,
         id: IdentityFile,
@@ -615,7 +615,7 @@ impl Cli {
 
     fn action_check_init(&self, config: &Configuration) -> Result<(), std::io::Error> {
         let options = config.options()?;
-        let ca = self.create_ca(options, config.identity_file())?;
+        let ca = self.get_or_create_ca(options, config.identity_file())?;
         self.find_ca_or_warn(&config, &ca)?;
         self.recreate_index(&config, None)?;
 
@@ -625,13 +625,13 @@ impl Cli {
     #[cfg(target_family = "unix")]
     fn action_share(&self, config: &Configuration) -> Result<(), std::io::Error> {
         let options = config.options()?;
-        let ca = self.create_ca(options, config.identity_file())?;
+        let ca = self.get_or_create_ca(options, config.identity_file())?;
 
         let Some(path) = self.target_repository.as_deref() else {
             return Ok(());
         };
 
-        let mnemonic = if let Some(mnemonic) = self.find_shared_project(config, path)? {
+        let mnemonic = if let Some(mnemonic) = self.find_shared_project(config, path, &ca)? {
             mnemonic
         } else {
             let signed = self.generate_and_sign_key(config, options, &ca, path)?;
@@ -663,6 +663,7 @@ impl Cli {
         &self,
         config: &Configuration,
         target: &Path,
+        ca: &CertificateAuthority,
     ) -> Result<Option<String>, std::io::Error> {
         let basedir = config.runtime_dir().map_err(Self::runtime_dir_error)?;
         let target = target.canonicalize()?;
@@ -689,7 +690,13 @@ impl Cli {
                 .and_then(|path| path.canonicalize())
             {
                 Ok(project) if project == target => {
-                    return Ok(Some(mnemonic));
+                    let keyfile = basedir.join(&mnemonic).join("key-cert.pub");
+                    return if ca.validate_key(&keyfile, config)? {
+                        Ok(Some(mnemonic))
+                    } else {
+                        // No second chances.
+                        Ok(None)
+                    };
                 }
                 Ok(_other) => continue,
                 Err(_) => {

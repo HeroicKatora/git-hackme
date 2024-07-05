@@ -4,7 +4,7 @@ use directories::{ProjectDirs, UserDirs};
 
 use std::{
     fs,
-    io::Error,
+    io::{Error, Write as _},
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -266,6 +266,23 @@ impl CertificateAuthority {
         shell_out_to_command_success(sign_key)?;
 
         Ok(SignedEphemeralKey { path, mnemonic })
+    }
+
+    pub fn validate_key(&self, key: &Path, config: &Configuration) -> Result<bool, Error> {
+        let opt = config.options()?;
+
+        let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
+        let mut check_key = std::process::Command::new(&ssh_keygen);
+
+        check_key
+            .args(opts)
+            .args(["-L", "-f"])
+            .arg(key)
+            .stdout(std::process::Stdio::piped());
+
+        let description = shell_out_to_command_success(check_key)?;
+
+        Ok(true)
     }
 
     /// Generate the line to add to `authorized_keys`.

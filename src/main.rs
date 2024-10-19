@@ -20,8 +20,8 @@ fn _do() -> Result<(), std::io::Error> {
     // Always verify options first.
     let _options = config.options()?;
 
-    let cli = cli::Cli::new(&config)?;
-    cli.act(&config)?;
+    let cli = cli::Cli::new(config)?;
+    cli.act(config)?;
 
     Ok(())
 }

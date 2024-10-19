@@ -103,6 +103,32 @@ impl Templates {
         self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()
     }
 
+    pub fn ssh_config_template(
+        &self,
+        mnemonic_var: &str,
+        hostname_var: &str,
+        pwd_var: &str,
+        user: &str,
+    ) -> String {
+        // Keep in sync with `key_ssh_config` but here we have other types.
+        #[derive(serde::Serialize)]
+        struct Value<'a> {
+            mnemonic: String,
+            host: String,
+            user: &'a str,
+            runtime: String,
+        }
+
+        let value = Value {
+            mnemonic: format!("${mnemonic_var}"),
+            host: format!("${hostname_var}"),
+            user,
+            runtime: format!("${pwd_var}"),
+        };
+
+        self.tiny.render(Self::TEMPLATE_KEY_CONFIG, &value).unwrap()
+    }
+
     pub fn index(&self, username: &str, projects: &[Project]) -> String {
         #[derive(serde::Serialize)]
         struct Value<'a> {

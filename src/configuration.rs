@@ -163,7 +163,7 @@ impl IdentityFile {
     pub fn into_ca(self, opt: &Options) -> Result<CertificateAuthority, Error> {
         let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
 
-        let mut public_key = std::process::Command::new(&ssh_keygen);
+        let mut public_key = std::process::Command::new(ssh_keygen);
 
         public_key
             .args(opts)
@@ -206,7 +206,7 @@ impl CertificateAuthority {
 
         let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
 
-        let mut create_key = std::process::Command::new(&ssh_keygen);
+        let mut create_key = std::process::Command::new(ssh_keygen);
 
         create_key
             .args(opts)
@@ -220,7 +220,7 @@ impl CertificateAuthority {
 
         shell_out_to_command_success(create_key)?;
 
-        let mut sign_key = std::process::Command::new(&ssh_keygen);
+        let mut sign_key = std::process::Command::new(ssh_keygen);
 
         sign_key
             .args(opts)
@@ -272,7 +272,7 @@ impl CertificateAuthority {
         let opt = config.options()?;
 
         let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
-        let mut check_key = std::process::Command::new(&ssh_keygen);
+        let mut check_key = std::process::Command::new(ssh_keygen);
 
         check_key
             .args(opts)
@@ -280,7 +280,7 @@ impl CertificateAuthority {
             .arg(key)
             .stdout(std::process::Stdio::piped());
 
-        let description = shell_out_to_command_success(check_key)?;
+        shell_out_to_command_success(check_key)?;
 
         Ok(true)
     }
@@ -397,7 +397,7 @@ impl SignedEphemeralKey {
 
     fn digest_at(path: &PathBuf, opt: &Options) -> Result<[u8; 32], Error> {
         let (ssh_keygen, opts) = opt.ssh_keygen.split_first().unwrap();
-        let mut describe_key = std::process::Command::new(&ssh_keygen);
+        let mut describe_key = std::process::Command::new(ssh_keygen);
 
         describe_key
             .args(opts)

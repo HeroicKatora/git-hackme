@@ -172,7 +172,7 @@ impl Cli {
         })
     }
 
-    fn exit_help(bin: &PathBuf, what: &[Option<&str>]) -> ! {
+    fn exit_help(bin: &Path, what: &[Option<&str>]) -> ! {
         match what.first().and_then(|&x| x) {
             Some("clone") => {
                 eprintln!(
@@ -200,7 +200,7 @@ impl Cli {
         std::process::exit(0)
     }
 
-    fn exit_fail(bin: &PathBuf, _arguments: Vec<OsString>) -> ! {
+    fn exit_fail(bin: &Path, _arguments: Vec<OsString>) -> ! {
         eprintln!("Did not understand you there");
         eprintln!(
             "Usage: {} [init | share | clone| restore | shell]",
@@ -449,9 +449,7 @@ impl Cli {
 
         // Find out if this may be a valid entry by inspecting the name. It should be generated
         // according to our mnemonic file name patterns.
-        let Some(name) = entry_name.to_str() else {
-            return None;
-        };
+        let name = entry_name.to_str()?;
 
         if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return None;
@@ -929,6 +927,7 @@ impl Cli {
             let mut reader = response.into_reader();
             let mut writer = std::fs::OpenOptions::new()
                 .create(true)
+                .truncate(true)
                 .write(true)
                 .mode(0o600)
                 .open(&file)?;

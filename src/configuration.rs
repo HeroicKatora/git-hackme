@@ -4,7 +4,7 @@ use directories::{ProjectDirs, UserDirs};
 
 use std::{
     fs,
-    io::{Error, Write as _},
+    io::Error,
     path::{Path, PathBuf},
     sync::OnceLock,
 };

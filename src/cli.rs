@@ -422,9 +422,17 @@ impl Cli {
         let index = self.templates.index(config.username(), &projects);
         let style = self.templates.style(Self::LOGO_GITHUB);
 
+        let ssh_config_template = self.templates.ssh_config_template(
+            "GIT_HACKME_MNEMONIC",
+            "GIT_HACKME_HOSTNAME",
+            "PWD",
+            config.username(),
+        );
+
         std::fs::create_dir_all(basedir)?;
         std::fs::write(basedir.join("index.html"), index)?;
         std::fs::write(basedir.join("style.css"), style)?;
+        std::fs::write(basedir.join("ssh_config.template"), ssh_config_template)?;
 
         self.recommend_netdev(basedir, find_project)?;
         if let Some(find_project) = find_project {

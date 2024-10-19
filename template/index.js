@@ -7,13 +7,20 @@ const init_window = function (project_items, project_username) {
 		title.innerText += ` shared at ${window.location}`;
 	}
 
+	let join = document.getElementById('git-hackme-manual-join-hostname');
+	if (join) {
+		join.innerText = `export "GIT_HACKME_HOST=${window.location.host}" "GIT_HACKME_HOSTNAME=${window.location.hostname}"`;
+	}
+
 	for (let item of document.getElementsByClassName('git-hackme-project-join-link')) {
 		const preText = item.getElementsByClassName('git-hackme-project-join-pre')[0];
 		const buttonText = item.getElementsByClassName('git-hackme-project-join-button')[0];
 
-		buttonText.onclick = function() {
-			navigator.clipboard.writeText(preText.innerText);
-		};
+		if (buttonText) {
+			buttonText.onclick = function() {
+				navigator.clipboard.writeText(preText.innerText);
+			};
+		}
 	}
 
 	window.onload = () => {

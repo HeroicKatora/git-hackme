@@ -18,6 +18,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -33,8 +36,8 @@ jobs:
           args: --all-targets --workspace -- -D warnings
 
   check_osx:
-    name: Check Linux
-    runs-on: macosx-latest
+    name: Check Mac OSX
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -42,6 +45,9 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - uses: actions-rs/cargo@v1
         with:
           command: check
